@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import {
   api,
   ApiError,
@@ -8,6 +8,7 @@ import {
 } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
 import { Button } from "../components/Button";
+import { tipoDesdeRubro } from "../data/negociosConfig";
 import {
   BoxIcon,
   ChatIcon,
@@ -115,6 +116,7 @@ function getRubroIcon(rubro: string) {
 
 export default function Dashboard() {
   const { session, logout } = useAuth();
+  const navigate = useNavigate();
 
   if (session && session.rol !== "admin") {
     return <Navigate to="/" replace />;
@@ -982,13 +984,19 @@ export default function Dashboard() {
 
                   <div className={styles.cardFooter}>
                     <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => navigate(`/${tipoDesdeRubro(negocio.rubro)}`)}
+                    >
+                      <span>Entrar al POS ➔</span>
+                    </Button>
+                    <Button
                       variant="outline"
                       size="sm"
-                      fullWidth
                       onClick={() => abrirGestionUsuarios(negocio)}
                     >
                       <UserIcon size={16} />
-                      <span>Gestionar Usuarios</span>
+                      <span>Usuarios</span>
                     </Button>
                   </div>
                 </div>

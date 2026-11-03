@@ -33,11 +33,11 @@
 }
 
 .sidebarLogo {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--servicio);
-  color: var(--servicio-ink);
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-accent);
+  color: var(--brand-accent-contrast);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -76,9 +76,10 @@
 }
 
 .sidebarLinkActive {
-  background: oklch(1 0 0 / 0.08);
-  color: white;
+  background: var(--brand-accent);
+  color: var(--brand-accent-contrast);
   font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
 .dot {
@@ -259,15 +260,17 @@
 
 .bottomNav {
   flex-shrink: 0;
-  height: 70px;
+  min-height: 68px;
   border-top: 1px solid var(--line);
   background: var(--card);
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-around;
-  padding-bottom: 8px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
   position: sticky;
   bottom: 0;
+  z-index: 50;
+  box-shadow: 0 -2px 12px rgba(31, 36, 33, 0.04);
 }
 
 @media (min-width: 960px) {
@@ -277,18 +280,30 @@
 }
 
 .bottomNavItem {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 3px;
-  font-size: 10px;
-  color: var(--ink-faint);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-soft);
   text-decoration: none;
+  border-radius: var(--radius-sm);
+  min-height: var(--touch-target-min);
+  padding: 4px 2px;
+  transition: all 0.15s ease;
+}
+
+.bottomNavItem:active {
+  background: var(--paper);
 }
 
 .bottomNavItemActive {
-  color: var(--ink);
-  font-weight: 600;
+  color: var(--brand-accent);
+  font-weight: 700;
+  background: var(--brand-accent-surface);
 }
 
 /* --- Badge de Conectividad y Sincronización --- */
@@ -473,4 +488,48 @@
   color: white;
   border-style: solid;
   border-color: oklch(1 0 0 / 0.3);
+}
+
+.adminNavBtn {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.1);
+  color: #FFFFFF;
+  text-decoration: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.adminNavBtn:hover {
+  background: var(--brand-accent);
+}
+
+.adminHeaderBadge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: #FFFFFF;
+  text-decoration: none;
+}
+
+.adminHeaderBtn {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: #FFFFFF;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.adminHeaderBtn:hover {
+  filter: brightness(1.2);
 }

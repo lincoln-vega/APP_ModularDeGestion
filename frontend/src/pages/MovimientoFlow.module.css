@@ -238,25 +238,38 @@
 .paymentGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 
 .paymentOption {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 16px 10px;
-  border-radius: 14px;
+  padding: 18px 12px;
+  border-radius: var(--radius-md);
   background: var(--card);
-  border: 1.5px solid var(--line);
-  color: var(--ink-soft);
+  border: 2px solid var(--line);
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 72px;
+  box-shadow: var(--shadow-subtle);
+  transition: all 0.15s ease;
+}
+
+.paymentOption:hover {
+  border-color: var(--line-strong);
 }
 
 .paymentOptionActive {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: white;
+  background: var(--brand-accent-surface);
+  border-color: var(--brand-accent);
+  color: var(--brand-accent);
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .warnBox {
@@ -487,9 +500,9 @@
 }
 
 .stepperBtn:hover:not(:disabled) {
-  background: var(--primary, #2563eb);
-  color: #fff;
-  border-color: var(--primary, #2563eb);
+  background: var(--brand-accent);
+  color: var(--brand-accent-contrast);
+  border-color: var(--brand-accent);
   transform: scale(1.04);
 }
 
@@ -553,14 +566,14 @@
 }
 
 .quickCantPill:hover:not(:disabled) {
-  border-color: var(--primary, #2563eb);
+  border-color: var(--brand-accent);
   color: var(--ink);
 }
 
 .quickCantPillActive {
-  background: var(--primary, #2563eb) !important;
-  color: #fff !important;
-  border-color: var(--primary, #2563eb) !important;
+  background: var(--brand-accent) !important;
+  color: var(--brand-accent-contrast) !important;
+  border-color: var(--brand-accent) !important;
 }
 
 .quickCantPill:disabled {
@@ -1172,6 +1185,45 @@
     box-shadow: none;
     padding: 0;
     margin: 0;
+  }
+}
+
+/* Barra de Cobro Fija en Móvil (Sticky Checkout Bar) */
+.mobileStickyBar {
+  display: flex;
+  position: sticky;
+  bottom: 74px;
+  left: 0;
+  right: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  box-shadow: 0 4px 20px rgba(31, 36, 33, 0.12);
+  z-index: 30;
+}
+
+.stickyTotalLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+.stickyTotalAmount {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--brand-accent);
+}
+
+@media (min-width: 960px) {
+  .mobileStickyBar {
+    display: none;
   }
 }
 

@@ -2,29 +2,50 @@ import { BoxIcon, CashIcon, HomeIcon, ReceiptIcon, UserIcon } from "../component
 import type { NavItem } from "../components/AppShell";
 import type { NegocioTipo } from "./negociosConfig";
 
-/** Ítems de la barra de navegación (sidebar en escritorio, barra inferior
- * en móvil) para cada tipo de negocio. Stock/Compras/Clientes todavía no
- * tienen pantalla propia — llevan a un aviso de "en construcción" en vez
- * de un link roto. */
-export function navItemsFor(tipo: NegocioTipo): NavItem[] {
+/**
+ * Ítems de la barra de navegación (sidebar en escritorio, barra inferior táctil en móvil).
+ * Se derivan dinámicamente de los módulos activos de cada negocio (multi-tenant escalable),
+ * asegurando consistencia entre talleres, lubricentros, lencerías/retail o futuros rubros.
+ */
+export function navItemsFor(
+  tipo: NegocioTipo,
+  modulosActivos?: Record<string, unknown>,
+  moduloRusActivo?: boolean,
+): NavItem[] {
   const base = `/${tipo}`;
-  const comunes: NavItem[] = [
+  const items: NavItem[] = [
     { id: "inicio", label: "Inicio", icon: HomeIcon, to: base },
-    { id: "caja", label: "Caja", icon: CashIcon, to: `${base}/cierre-caja` },
   ];
 
-  if (tipo === "lubricentro") {
-    return [
-      comunes[0],
-      { id: "clientes", label: "Clientes", icon: UserIcon, to: `${base}/clientes` },
-      comunes[1],
-    ];
+  // Módulo de Stock e Inventario (activo por defecto salvo para lubricentro u omitido explícitamente)
+  const tieneStock =
+    modulosActivos && typeof modulosActivos.stock === "boolean"
+      ? Boolean(modulosActivos.stock)
+      : tipo !== "lubricentro";
+  if (tieneStock) {
+    items.push({ id: "stock", label: "Stock", icon: BoxIcon, to: `${base}/stock` });
   }
 
-  return [
-    comunes[0],
-    { id: "stock", label: "Stock", icon: BoxIcon, to: `${base}/stock` },
-    comunes[1],
-    { id: "sunat", label: "SUNAT", icon: ReceiptIcon, to: `${base}/sunat` },
-  ];
+  // Módulo de Clientes / Vehículos (activo para lubricentro o según configuración de módulos)
+  const tieneClientes =
+    modulosActivos && typeof modulosActivos.clientes_vehiculos === "boolean"
+      ? Boolean(modulosActivos.clientes_vehiculos)
+      : tipo === "lubricentro";
+  if (tieneClientes) {
+    items.push({ id: "clientes", label: "Clientes", icon: UserIcon, to: `${base}/clientes` });
+  }
+
+  // Módulo de Caja (siempre presente para control de turno y efectivo)
+  items.push({ id: "caja", label: "Caja", icon: CashIcon, to: `${base}/cierre-caja` });
+
+  // Módulo SUNAT / RUS (régimen simplificado de boletas)
+  const tieneSunat =
+    moduloRusActivo !== undefined
+      ? moduloRusActivo
+      : tipo === "llanteria" || tipo === "lenceria";
+  if (tieneSunat) {
+    items.push({ id: "sunat", label: "SUNAT", icon: ReceiptIcon, to: `${base}/sunat` });
+  }
+
+  return items;
 }

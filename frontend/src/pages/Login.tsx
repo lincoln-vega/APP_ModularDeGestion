@@ -34,7 +34,7 @@ export default function Login() {
         navigate(destino, { replace: true });
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo iniciar sesión.");
+      setError(err instanceof ApiError ? err.message : "Usuario o contraseña incorrectos.");
     } finally {
       setEnviando(false);
     }
@@ -42,11 +42,6 @@ export default function Login() {
 
   return (
     <div className={styles.page}>
-      {/* Elementos decorativos de fondo para efecto Glassmorphism */}
-      <div className={styles.bgGlow1} />
-      <div className={styles.bgGlow2} />
-      <div className={styles.bgGrid} />
-
       <form className={styles.card} onSubmit={enviar}>
         <div className={styles.badge}>
           <GaugeIcon size={14} />
@@ -70,7 +65,7 @@ export default function Login() {
               <input
                 className={styles.input}
                 type="text"
-                placeholder="Ej. admin o usuario"
+                placeholder="Ej. lincoln o llanteria"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
@@ -117,6 +112,58 @@ export default function Login() {
         >
           {enviando ? "Autenticando…" : "Ingresar al Sistema"}
         </Button>
+
+        <div className={styles.quickAccessSection}>
+          <p className={styles.quickAccessTitle}>
+            Cuentas de acceso rápido (clic para rellenar):
+          </p>
+          <div className={styles.quickAccessGrid}>
+            <button
+              type="button"
+              className={styles.quickAccountBtn}
+              onClick={() => {
+                setUsername("lincoln");
+                setPassword("admin123");
+              }}
+            >
+              <span className={styles.quickRole}>👑 SuperAdmin</span>
+              <span className={styles.quickUser}>lincoln</span>
+            </button>
+            <button
+              type="button"
+              className={styles.quickAccountBtn}
+              onClick={() => {
+                setUsername("llanteria");
+                setPassword("dueno123");
+              }}
+            >
+              <span className={styles.quickRole}>🚗 Llantería</span>
+              <span className={styles.quickUser}>llanteria</span>
+            </button>
+            <button
+              type="button"
+              className={styles.quickAccountBtn}
+              onClick={() => {
+                setUsername("lubricentro");
+                setPassword("dueno123");
+              }}
+            >
+              <span className={styles.quickRole}>🛢️ Lubricentro</span>
+              <span className={styles.quickUser}>lubricentro</span>
+            </button>
+            <button
+              type="button"
+              className={styles.quickAccountBtn}
+              onClick={() => {
+                setUsername("lenceria");
+                setPassword("dueno123");
+              }}
+            >
+              <span className={styles.quickRole}>✨ Lencería</span>
+              <span className={styles.quickUser}>lenceria</span>
+            </button>
+          </div>
+        </div>
 
         <p className={styles.footerNote}>
           Acceso protegido • Multi-Negocio & Multi-Módulo

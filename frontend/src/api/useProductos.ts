@@ -13,7 +13,8 @@ export function useProductos(negocioId: number | undefined) {
     try {
       setProductos(await api.listProductos(negocioId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error inesperado");
+      setError(err instanceof Error ? err.message : "Error inesperado al cargar productos");
+      setProductos([]);
     } finally {
       setLoading(false);
     }

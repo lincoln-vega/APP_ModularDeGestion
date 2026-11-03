@@ -15,6 +15,8 @@ import {
   TireIcon,
   TubeIcon,
   WrenchIcon,
+  SparklesIcon,
+  BoxIcon,
 } from "../components/icons/Icons";
 
 export interface AccionRapida {
@@ -91,6 +93,22 @@ export const NEGOCIOS_CONFIG = {
     modulosActivosDefault: { clientes_vehiculos: true },
     moduloRusActivoDefault: false,
   },
+  lenceria: {
+    rubro: "lencería",
+    nombreFallback: "Lencería & Modas",
+    saludoFallback: "Hola",
+    logo: SparklesIcon,
+    servicios: [
+      { id: "ajuste-costura", label: "Ajuste / Costura", icon: WrenchIcon, categoria: "servicio" },
+      { id: "planchado", label: "Planchado y Vapor", icon: SprayIcon, categoria: "servicio" },
+    ],
+    productos: [
+      { id: "prendas-conjuntos", label: "Prendas y Conjuntos", icon: BoxIcon, categoria: "producto" },
+      { id: "accesorios-moda", label: "Accesorios", icon: SparklesIcon, categoria: "producto" },
+    ],
+    modulosActivosDefault: { stock: true },
+    moduloRusActivoDefault: true,
+  },
 } as const satisfies Record<string, NegocioTipoConfig>;
 
 export type NegocioTipo = keyof typeof NEGOCIOS_CONFIG;
@@ -109,6 +127,15 @@ export function tipoDesdeRubro(rubro: string | undefined | null): NegocioTipo {
 
   if (r.includes("llant") || r.includes("neumat")) return "llanteria";
   if (r.includes("lubri") || r.includes("aceit")) return "lubricentro";
+  if (
+    r.includes("lencer") ||
+    r.includes("ropa") ||
+    r.includes("boutique") ||
+    r.includes("moda") ||
+    r.includes("textil")
+  ) {
+    return "lenceria";
+  }
 
   const match = (Object.keys(NEGOCIOS_CONFIG) as NegocioTipo[]).find((tipo) => {
     const configRubro = NEGOCIOS_CONFIG[tipo].rubro

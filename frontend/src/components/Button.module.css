@@ -19,14 +19,14 @@
 }
 
 .primary {
-  background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
-  color: white;
-  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3);
+  background: var(--brand-accent);
+  color: var(--brand-accent-contrast);
+  box-shadow: 0 4px 14px rgba(27, 67, 50, 0.2);
 }
 
 .primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%);
-  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.4);
+  filter: brightness(1.12);
+  box-shadow: 0 6px 18px rgba(27, 67, 50, 0.3);
 }
 
 .accent {
@@ -36,7 +36,7 @@
 
 .ghost {
   background: transparent;
-  color: #94a3b8;
+  color: var(--ink-soft);
   font-family: var(--font-body);
   font-weight: 500;
   font-size: 13px;
@@ -44,20 +44,20 @@
 }
 
 .ghost:hover:not(:disabled) {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  background: var(--line);
 }
 
 .outline {
   background: transparent;
-  border: 1px solid rgba(45, 212, 191, 0.35);
-  color: #2dd4bf;
+  border: 1.5px solid var(--line-strong);
+  color: var(--ink);
 }
 
 .outline:hover:not(:disabled) {
-  background: rgba(13, 148, 136, 0.15);
-  border-color: #2dd4bf;
-  color: #5eead4;
+  background: var(--card);
+  border-color: var(--brand-accent);
+  color: var(--brand-accent);
 }
 
 .danger {

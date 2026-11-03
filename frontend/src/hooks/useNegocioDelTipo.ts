@@ -65,20 +65,39 @@ export function useNegocioDelTipo() {
     };
   }, [isAdmin, session?.negocioId]);
 
+  const fallbackNegocio: Negocio = {
+    id: session?.negocioId ?? 1,
+    nombre: config.nombreFallback,
+    rubro: config.rubro,
+    modulos_activos: config.modulosActivosDefault,
+    plan_estado: "activo",
+    fecha_ultimo_pago: null,
+    link_sunat: null,
+    modulo_rus_activo: config.moduloRusActivoDefault,
+  };
+
   if (isAdmin) {
-    return { tipo, tipoValido: tipoValidoParam, config, ...negocioAdmin };
+    return {
+      tipo,
+      tipoValido: tipoValidoParam,
+      config,
+      ...negocioAdmin,
+      negocio: negocioAdmin.negocio ?? (negocioAdmin.error ? fallbackNegocio : null),
+    };
   }
 
   const rubroCoincide = tipoDesdeRubro(negocioSesion?.rubro) === tipo;
+  const negocioFinal = rubroCoincide
+    ? negocioSesion
+    : errorSesion
+      ? fallbackNegocio
+      : null;
 
   return {
     tipo,
-    // Ruta sintácticamente válida pero de otro negocio: mientras carga se
-    // asume válida para no parpadear a un redirect; ya resuelto, solo es
-    // válida si el negocio de la sesión es justo el de esta URL.
-    tipoValido: tipoValidoParam && (loadingSesion || rubroCoincide),
+    tipoValido: tipoValidoParam && (loadingSesion || rubroCoincide || Boolean(errorSesion)),
     config,
-    negocio: rubroCoincide ? negocioSesion : null,
+    negocio: negocioFinal,
     loading: loadingSesion,
     error: errorSesion,
     recargar: () => {},

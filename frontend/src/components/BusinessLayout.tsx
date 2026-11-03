@@ -52,8 +52,9 @@ export default function BusinessLayout() {
         logo={<config.logo size={20} />}
         negocioNombre={config.nombreFallback}
         saludo={config.saludoFallback}
-        navItems={navItemsFor(tipo)}
+        navItems={navItemsFor(tipo, config.modulosActivosDefault, config.moduloRusActivoDefault)}
         activeId="inicio"
+        tipoRubro={tipo}
       >
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "200px" }}>
           <p style={{ color: "var(--muted)", fontSize: "14px" }}>Cargando información del negocio…</p>
@@ -68,8 +69,9 @@ export default function BusinessLayout() {
         logo={<config.logo size={20} />}
         negocioNombre={config.nombreFallback}
         saludo={config.saludoFallback}
-        navItems={navItemsFor(tipo)}
+        navItems={navItemsFor(tipo, config.modulosActivosDefault, config.moduloRusActivoDefault)}
         activeId="inicio"
+        tipoRubro={tipo}
       >
         <EmptyState
           icon={<config.logo size={24} />}
@@ -87,7 +89,7 @@ export default function BusinessLayout() {
     );
   }
 
-  const navItems = navItemsFor(tipo);
+  const navItems = navItemsFor(tipo, negocio.modulos_activos, negocio.modulo_rus_activo);
   const pathname = location.pathname;
 
   // Determinar activeId según la ruta actual
@@ -131,6 +133,7 @@ export default function BusinessLayout() {
         navItems={navItems}
         activeId={activeId}
         negocioId={negocio.id}
+        tipoRubro={tipo}
         onAbrirTutorial={abrirTutorial}
       >
         <Outlet />

@@ -301,6 +301,7 @@ export const SERVICIOS_PLANTILLAS_DEFAULT = [
 // --- Manejo de Persistencia de Opciones Personalizadas por Negocio ---
 
 export interface CustomCatalogStorage {
+  arosPersonalizados?: string[];
   marcasPersonalizadas: string[];
   medidasPersonalizadas: { aro: string; medida: string }[];
   categoriasPersonalizadas: CategoriaPreset[];
@@ -314,15 +315,24 @@ export function getCustomCatalog(negocioId: number): CustomCatalogStorage {
     const raw = localStorage.getItem(`${STORAGE_PREFIX}${negocioId}`);
     if (!raw) {
       return {
+        arosPersonalizados: [],
         marcasPersonalizadas: [],
         medidasPersonalizadas: [],
         categoriasPersonalizadas: [],
         plantillasPersonalizadas: [],
       };
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return {
+      arosPersonalizados: parsed.arosPersonalizados || [],
+      marcasPersonalizadas: parsed.marcasPersonalizadas || [],
+      medidasPersonalizadas: parsed.medidasPersonalizadas || [],
+      categoriasPersonalizadas: parsed.categoriasPersonalizadas || [],
+      plantillasPersonalizadas: parsed.plantillasPersonalizadas || [],
+    };
   } catch {
     return {
+      arosPersonalizados: [],
       marcasPersonalizadas: [],
       medidasPersonalizadas: [],
       categoriasPersonalizadas: [],
@@ -340,6 +350,27 @@ export function saveCustomCatalog(
   } catch (e) {
     console.warn("No se pudo guardar catálogo personalizado en localStorage:", e);
   }
+}
+
+export function addCustomAro(negocioId: number, aro: string): void {
+  let a = aro.trim();
+  if (!a) return;
+  if (!a.toLowerCase().startsWith("aro") && !isNaN(Number(a))) {
+    a = `Aro ${a}`;
+  }
+  const data = getCustomCatalog(negocioId);
+  if (!data.arosPersonalizados) data.arosPersonalizados = [];
+  if (!data.arosPersonalizados.includes(a)) {
+    data.arosPersonalizados.push(a);
+    saveCustomCatalog(negocioId, data);
+  }
+}
+
+export function removeCustomAro(negocioId: number, aro: string): void {
+  const data = getCustomCatalog(negocioId);
+  if (!data.arosPersonalizados) return;
+  data.arosPersonalizados = data.arosPersonalizados.filter((a) => a !== aro);
+  saveCustomCatalog(negocioId, data);
 }
 
 export function addCustomMarca(negocioId: number, marca: string): void {

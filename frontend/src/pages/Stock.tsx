@@ -16,30 +16,26 @@ import { esCapital, getEstadoUsoBadge } from "../lib/contabilidad";
 import {
   AlertTriangleIcon,
   BoxIcon,
+  CheckIcon,
   ChevronDownIcon,
   CloseIcon,
   EditIcon,
   PlusIcon,
   SearchIcon,
+  TireIcon,
   TrashIcon,
   WrenchIcon,
 } from "../components/icons/Icons";
 import {
   CATEGORIAS_DEFAULT,
-  MARCAS_LLANTAS_DEFAULT,
-  MEDIDAS_LLANTAS_POR_ARO,
   ACEITES_VISCOSIDADES_DEFAULT,
   ACEITES_MARCAS_DEFAULT,
   ACEITES_PRESENTACIONES_DEFAULT,
-  PARCHES_PLANTILLAS_DEFAULT,
-  PARCHES_MEDIDAS_DEFAULT,
-  PARCHES_MARCAS_DEFAULT,
-  PARCHES_PRESENTACIONES_DEFAULT,
-  PARCHADOS_SERVICIOS_PLANTILLAS_DEFAULT,
-  PARCHADOS_MEDIDAS_SERVICIOS_DEFAULT,
   ADITIVOS_PLANTILLAS_DEFAULT,
   ACCESORIOS_PLANTILLAS_DEFAULT,
   getCustomCatalog,
+  addCustomAro,
+  removeCustomAro,
   addCustomMarca,
   removeCustomMarca,
   addCustomMedida,
@@ -51,6 +47,43 @@ import styles from "./Stock.module.css";
 type TabPrincipal = "productos" | "servicios" | "todos";
 type VistaStock = "marca" | "general";
 
+// Opciones esenciales más comunes en talleres para evitar saturación visual
+export const AROS_COMUNES_DEFAULT = ["Aro 13", "Aro 14", "Aro 15", "Aro 16"];
+
+export const MEDIDAS_COMUNES_POR_ARO_DEFAULT: Record<string, string[]> = {
+  "Aro 13": ["175/70 R13", "165/70 R13", "185/70 R13"],
+  "Aro 14": ["175/70 R14", "185/65 R14", "185/60 R14", "195/70 R14"],
+  "Aro 15": ["185/65 R15", "195/65 R15", "185/60 R15", "195/70 R15"],
+  "Aro 16": ["205/55 R16", "215/65 R16", "205/60 R16"],
+  "Aro 17": ["215/55 R17", "225/65 R17"],
+};
+
+export const MARCAS_COMUNES_DEFAULT = [
+  "Goodyear",
+  "Michelin",
+  "Bridgestone",
+  "Linglong",
+  "Westlake",
+];
+
+export const SERVICIOS_TALLER_COMUNES = [
+  "Parchado de auto (frío)",
+  "Parchado de auto (tarugo)",
+  "Vulcanizado de llanta",
+  "Balanceo Aro Fierro",
+  "Balanceo Aro Aluminio",
+  "Enllante y Desenllante",
+  "Inflado con Nitrógeno",
+];
+
+export const INSUMOS_TALLER_COMUNES = [
+  "Parche radial Nro 12",
+  "Parche frío redondo Nro 01",
+  "Pitón Válvula TR-414",
+  "Cámara de aire Aro 13-14",
+  "Cemento vulcanizante / Pegamento",
+];
+
 /**
  * Determina la categoría de un producto de forma inteligente según su nombre,
  * medida y clasificación para los filtros dinámicos.
@@ -59,6 +92,12 @@ export function obtenerCategoriaProducto(p: Producto): string {
   const nom = (p.nombre || "").toLowerCase();
   const med = (p.medida || "").toUpperCase();
 
+  // Si no es capital, es mano de obra / servicio directo
+  if (!esCapital(p.clasificacion)) {
+    return "servicios";
+  }
+
+  // Llantas físicas (medidas de aro R13-R24 o nombre con llanta/neumático)
   if (
     med.includes("R1") ||
     med.includes("R2") ||
@@ -67,6 +106,8 @@ export function obtenerCategoriaProducto(p: Producto): string {
   ) {
     return "llantas";
   }
+
+  // Aceites y lubricantes de motor/caja
   if (
     nom.includes("aceite") ||
     nom.includes("lubric") ||
@@ -75,10 +116,10 @@ export function obtenerCategoriaProducto(p: Producto): string {
   ) {
     return "aceites";
   }
+
+  // Insumos físicos de llantería: parches, vulcanización, válvulas, cámaras, mechas
   if (
-    !esCapital(p.clasificacion) ||
     nom.includes("parche") ||
-    nom.includes("parchado") ||
     nom.includes("camara") ||
     nom.includes("cámara") ||
     nom.includes("mecha") ||
@@ -88,13 +129,12 @@ export function obtenerCategoriaProducto(p: Producto): string {
     nom.includes("válvula") ||
     nom.includes("piton") ||
     nom.includes("pitón") ||
-    nom.includes("cemento") ||
-    nom.includes("enllante") ||
-    nom.includes("balanceo") ||
-    nom.includes("alineamiento")
+    nom.includes("cemento")
   ) {
-    return "parches_servicios";
+    return "parches";
   }
+
+  // Aditivos y fluidos de mantenimiento
   if (
     nom.includes("refrigerante") ||
     nom.includes("coolant") ||
@@ -110,6 +150,8 @@ export function obtenerCategoriaProducto(p: Producto): string {
   ) {
     return "aditivos";
   }
+
+  // Accesorios y repuestos mecánicos
   if (
     nom.includes("filtro") ||
     nom.includes("plumilla") ||
@@ -200,14 +242,15 @@ export default function Stock() {
   // Estado del Modal de Creación Asistida
   const [modalNuevoAbierto, setModalNuevoAbierto] = useState(false);
   const [categoriaActivaId, setCategoriaActivaId] = useState<string>("llantas");
-  const [mostrarGridCategorias, setMostrarGridCategorias] = useState(true);
   const [tipoItemNuevo, setTipoItemNuevo] = useState<"producto" | "servicio">("producto");
-  const [aroActivo, setAroActivo] = useState<string>("Todos");
+  const [aroActivo, setAroActivo] = useState<string>("Aro 15");
   const [viscosidadAceite, setViscosidadAceite] = useState<string>("10W-40");
   const [presentacionAceite, setPresentacionAceite] = useState<string>("1/4 Galón");
   const [marcaAceite, setMarcaAceite] = useState<string>("Motul");
 
   // Sub-formularios inline para agregar nuevas opciones sobre la marcha (+ Otra)
+  const [inlineAroAbierto, setInlineAroAbierto] = useState(false);
+  const [nuevoAroTexto, setNuevoAroTexto] = useState("");
   const [inlineMarcaAbierto, setInlineMarcaAbierto] = useState(false);
   const [nuevaMarcaTexto, setNuevaMarcaTexto] = useState("");
   const [inlineMedidaAbierto, setInlineMedidaAbierto] = useState(false);
@@ -217,12 +260,7 @@ export default function Stock() {
   // Estados específicos para el módulo unificado de Parchados y Servicios
   const [subTipoParchado, setSubTipoParchado] = useState<"servicio" | "insumo">("servicio");
   const [parcheServicioNombre, setParcheServicioNombre] = useState("Parchado de auto (frío)");
-  const [parcheServicioMedida, setParcheServicioMedida] = useState("Chico 00");
-
-  const [parcheInsumoNombre, setParcheInsumoNombre] = useState("Parche Frío Redondo");
-  const [parcheInsumoMarca, setParcheInsumoMarca] = useState("Vipal");
-  const [parcheInsumoMedida, setParcheInsumoMedida] = useState("00");
-  const [parcheInsumoPresentacion, setParcheInsumoPresentacion] = useState("Caja x 100");
+  const [parcheInsumoNombre, setParcheInsumoNombre] = useState("Parche radial Nro 12");
 
   const duplicateBannerRef = useRef<HTMLDivElement>(null);
 
@@ -266,6 +304,7 @@ export default function Stock() {
     precio_compra: "",
     stock_actual: "0",
     stock_minimo: "0",
+    activo: true,
   });
 
   // Estado del Modal de Eliminación
@@ -297,6 +336,7 @@ export default function Stock() {
   const customCatalog = useMemo(() => {
     if (!negocio) {
       return {
+        arosPersonalizados: [],
         marcasPersonalizadas: [],
         medidasPersonalizadas: [],
         categoriasPersonalizadas: [],
@@ -312,77 +352,33 @@ export default function Stock() {
     return [...CATEGORIAS_DEFAULT, ...customCatalog.categoriasPersonalizadas];
   }, [customCatalog]);
 
-  const categoriaActual = useMemo(() => {
-    return (
-      todasCategorias.find((c) => c.id === categoriaActivaId) || todasCategorias[0]
-    );
-  }, [todasCategorias, categoriaActivaId]);
-
-  // Lista consolidada de marcas de llantas
-  const todasMarcasLlantas = useMemo(() => {
-    const existentesEnStock = inventarioProductos
-      .map((p) => p.marca?.trim())
-      .filter((m): m is string => Boolean(m));
+  // Aros esenciales más comunes (Aro 13 a 16 + agregados por el usuario)
+  const listaAros = useMemo(() => {
     const set = new Set([
-      ...MARCAS_LLANTAS_DEFAULT,
-      ...customCatalog.marcasPersonalizadas,
-      ...existentesEnStock,
+      ...AROS_COMUNES_DEFAULT,
+      ...(customCatalog.arosPersonalizados || []),
     ]);
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [customCatalog, inventarioProductos]);
+    return Array.from(set);
+  }, [customCatalog]);
 
-  // Lista consolidada de medidas de llantas agrupadas por Aro
-  const todasMedidasPorAro = useMemo(() => {
-    const arosMap = new Map<string, Set<string>>();
-    for (const a of MEDIDAS_LLANTAS_POR_ARO) {
-      arosMap.set(a.aro, new Set(a.medidas));
-    }
+  // Marcas esenciales más comunes (+ marcas agregadas por el usuario)
+  const todasMarcasLlantas = useMemo(() => {
+    const set = new Set([
+      ...MARCAS_COMUNES_DEFAULT,
+      ...customCatalog.marcasPersonalizadas,
+    ]);
+    return Array.from(set);
+  }, [customCatalog]);
 
-    for (const item of customCatalog.medidasPersonalizadas) {
-      const aroKey = item.aro || "Aro 15";
-      if (!arosMap.has(aroKey)) {
-        arosMap.set(aroKey, new Set());
-      }
-      arosMap.get(aroKey)!.add(item.medida);
-    }
-
-    for (const p of inventarioProductos) {
-      if (p.medida?.trim()) {
-        const med = p.medida.trim().toUpperCase();
-        let asignado = false;
-        for (const aroKey of arosMap.keys()) {
-          const numAro = aroKey.replace("Aro ", "");
-          if (med.includes(`R${numAro}`) || med.includes(`r${numAro}`)) {
-            arosMap.get(aroKey)!.add(p.medida.trim());
-            asignado = true;
-            break;
-          }
-        }
-        if (!asignado) {
-          if (!arosMap.has("Otras Medidas")) arosMap.set("Otras Medidas", new Set());
-          arosMap.get("Otras Medidas")!.add(p.medida.trim());
-        }
-      }
-    }
-
-    return Array.from(arosMap.entries()).map(([aro, medidasSet]) => ({
-      aro,
-      medidas: Array.from(medidasSet),
-    }));
-  }, [customCatalog, inventarioProductos]);
-
-  // Medidas activas filtradas según la pestaña de Aro seleccionada
+  // Medidas esenciales más comunes para el Aro seleccionado (+ medidas agregadas por el usuario)
   const medidasFiltradas = useMemo(() => {
-    if (aroActivo === "Todos") {
-      const todas = new Set<string>();
-      for (const item of todasMedidasPorAro) {
-        for (const m of item.medidas) todas.add(m);
-      }
-      return Array.from(todas);
-    }
-    const match = todasMedidasPorAro.find((a) => a.aro === aroActivo);
-    return match ? match.medidas : [];
-  }, [todasMedidasPorAro, aroActivo]);
+    const base = MEDIDAS_COMUNES_POR_ARO_DEFAULT[aroActivo] || ["185/65 R15", "195/65 R15"];
+    const personalizadas = customCatalog.medidasPersonalizadas
+      .filter((item) => (item.aro || "Aro 15") === aroActivo)
+      .map((item) => item.medida);
+
+    return Array.from(new Set([...base, ...personalizadas]));
+  }, [aroActivo, customCatalog]);
 
   // Lista de píldoras de filtro por categoría según el tab activo
   const filtrosCategoriaDisponibles = useMemo(() => {
@@ -403,48 +399,24 @@ export default function Stock() {
       { id: "todas", label: "Todas las categorías", conteo: universo.length },
     ];
 
-    if (tabPrincipal !== "servicios") {
-      opciones.push({
-        id: "llantas",
-        label: "🚗 Llantas",
-        conteo: conteos["llantas"] || 0,
-      });
-      opciones.push({
-        id: "parches",
-        label: "🔧 Parches y Vulcanización",
-        conteo: conteos["parches"] || 0,
-      });
-      opciones.push({
-        id: "aceites",
-        label: "🛢️ Aceites y Lubricantes",
-        conteo: conteos["aceites"] || 0,
-      });
-      opciones.push({
-        id: "aditivos",
-        label: "🧪 Aditivos y Fluidos",
-        conteo: conteos["aditivos"] || 0,
-      });
-      opciones.push({
-        id: "accesorios",
-        label: "🔩 Accesorios y Repuestos",
-        conteo: conteos["accesorios"] || 0,
-      });
-    }
+    const catalogoDef = [
+      { id: "llantas", label: "🚗 Llantas" },
+      { id: "parches", label: "🔧 Parches e Insumos" },
+      { id: "aceites", label: "🛢️ Aceites y Lubricantes" },
+      { id: "aditivos", label: "🧪 Aditivos y Fluidos" },
+      { id: "accesorios", label: "🔩 Accesorios y Repuestos" },
+      { id: "servicios", label: "🛠️ Servicios y Mano de Obra" },
+      { id: "otro", label: "📦 Otros" },
+    ];
 
-    if (tabPrincipal === "servicios" || tabPrincipal === "todos") {
-      opciones.push({
-        id: "servicios",
-        label: "🛠️ Servicios y Mano de Obra",
-        conteo: conteos["servicios"] || 0,
-      });
-    }
-
-    if (conteos["otro"]) {
-      opciones.push({
-        id: "otro",
-        label: "📦 Otros",
-        conteo: conteos["otro"] || 0,
-      });
+    for (const cat of catalogoDef) {
+      if ((conteos[cat.id] || 0) > 0) {
+        opciones.push({
+          id: cat.id,
+          label: cat.label,
+          conteo: conteos[cat.id],
+        });
+      }
     }
 
     return opciones;
@@ -578,7 +550,6 @@ export default function Stock() {
   // --- Manejo de la Cascada y Selección ---
   const seleccionarCategoria = (cat: CategoriaPreset) => {
     setCategoriaActivaId(cat.id);
-    setMostrarGridCategorias(false);
     setTipoItemNuevo(cat.tipo);
     setErrorNuevo(null);
     setCandidatosDuplicados(null);
@@ -615,9 +586,9 @@ export default function Stock() {
       setTipoItemNuevo("servicio");
       setFormNuevo((prev) => ({
         ...prev,
-        nombre: `${parcheServicioNombre} - ${parcheServicioMedida}`,
+        nombre: parcheServicioNombre,
         marca: "",
-        medida: parcheServicioMedida,
+        medida: "",
         precio_lista: "7.00",
         precio_compra: "0.00",
         stock_actual: "0",
@@ -659,9 +630,9 @@ export default function Stock() {
       setTipoItemNuevo("servicio");
       setFormNuevo((prev) => ({
         ...prev,
-        nombre: `${parcheServicioNombre} - ${parcheServicioMedida}`,
+        nombre: "Parchado de auto (frío)",
         marca: "",
-        medida: parcheServicioMedida,
+        medida: "",
         precio_lista: prev.precio_lista || "7.00",
         precio_compra: "0.00",
         stock_actual: "0",
@@ -671,68 +642,16 @@ export default function Stock() {
       setTipoItemNuevo("producto");
       setFormNuevo((prev) => ({
         ...prev,
-        nombre: `${parcheInsumoNombre} ${parcheInsumoMarca} ${parcheInsumoMedida} (${parcheInsumoPresentacion})`,
-        marca: parcheInsumoMarca,
-        medida: parcheInsumoMedida,
+        nombre: "Parche radial Nro 12",
+        marca: "RAC",
+        medida: "Nro 12",
         estado_uso: "nuevo",
-        precio_lista: prev.precio_lista || "10.00",
-        precio_compra: prev.precio_compra || "50.00",
-        stock_actual: "2",
-        stock_minimo: "1",
+        precio_lista: prev.precio_lista || "8.50",
+        precio_compra: prev.precio_compra || "4.00",
+        stock_actual: "10",
+        stock_minimo: "5",
       }));
     }
-  };
-
-  const seleccionarServicioParchado = (srv: string) => {
-    setParcheServicioNombre(srv);
-    setFormNuevo((prev) => ({
-      ...prev,
-      nombre: `${srv} - ${parcheServicioMedida}`,
-      medida: parcheServicioMedida,
-    }));
-  };
-
-  const seleccionarMedidaServicioParchado = (med: string) => {
-    setParcheServicioMedida(med);
-    setFormNuevo((prev) => ({
-      ...prev,
-      nombre: `${parcheServicioNombre} - ${med}`,
-      medida: med,
-    }));
-  };
-
-  const seleccionarInsumoParchado = (nom: string) => {
-    setParcheInsumoNombre(nom);
-    setFormNuevo((prev) => ({
-      ...prev,
-      nombre: `${nom} ${parcheInsumoMarca} ${parcheInsumoMedida} (${parcheInsumoPresentacion})`,
-    }));
-  };
-
-  const seleccionarMarcaInsumoParchado = (marca: string) => {
-    setParcheInsumoMarca(marca);
-    setFormNuevo((prev) => ({
-      ...prev,
-      marca,
-      nombre: `${parcheInsumoNombre} ${marca} ${parcheInsumoMedida} (${parcheInsumoPresentacion})`,
-    }));
-  };
-
-  const seleccionarMedidaInsumoParchado = (medida: string) => {
-    setParcheInsumoMedida(medida);
-    setFormNuevo((prev) => ({
-      ...prev,
-      medida,
-      nombre: `${parcheInsumoNombre} ${parcheInsumoMarca} ${medida} (${parcheInsumoPresentacion})`,
-    }));
-  };
-
-  const seleccionarPresentacionInsumoParchado = (pres: string) => {
-    setParcheInsumoPresentacion(pres);
-    setFormNuevo((prev) => ({
-      ...prev,
-      nombre: `${parcheInsumoNombre} ${parcheInsumoMarca} ${parcheInsumoMedida} (${pres})`,
-    }));
   };
 
   const seleccionarMarcaLlanta = (m: string) => {
@@ -745,6 +664,15 @@ export default function Stock() {
         nombre: medida ? `Llanta ${medida} ${m}${cond}` : `Llanta ${m}${cond}`,
       };
     });
+  };
+
+  const seleccionarAroLlanta = (aro: string) => {
+    setAroActivo(aro);
+    setAroParaNuevaMedida(aro);
+    const medidas = MEDIDAS_COMUNES_POR_ARO_DEFAULT[aro];
+    if (medidas && medidas.length > 0) {
+      seleccionarMedidaLlanta(medidas[0]);
+    }
   };
 
   const seleccionarMedidaLlanta = (med: string) => {
@@ -800,6 +728,20 @@ export default function Stock() {
     }));
   };
 
+  const guardarNuevoAro = () => {
+    if (!negocio || !nuevoAroTexto.trim()) return;
+    let a = nuevoAroTexto.trim();
+    if (!a.toLowerCase().startsWith("aro") && !isNaN(Number(a))) {
+      a = `Aro ${a}`;
+    }
+    addCustomAro(negocio.id, a);
+    setCatalogVersion((v) => v + 1);
+    setAroActivo(a);
+    setAroParaNuevaMedida(a);
+    setNuevoAroTexto("");
+    setInlineAroAbierto(false);
+  };
+
   const guardarNuevaMarca = () => {
     if (!negocio || !nuevaMarcaTexto.trim()) return;
     const m = nuevaMarcaTexto.trim();
@@ -820,6 +762,53 @@ export default function Stock() {
     setInlineMedidaAbierto(false);
   };
 
+  const ajustarPrecioNuevo = (sum: number) => {
+    const actual = parseFloat(formNuevo.precio_lista) || 0;
+    const nuevo = Math.max(0, actual + sum);
+    setFormNuevo((prev) => ({ ...prev, precio_lista: nuevo.toFixed(2) }));
+  };
+
+  const redondearPrecioNuevo = () => {
+    const actual = parseFloat(formNuevo.precio_lista) || 0;
+    const redondeado = Math.round(actual);
+    setFormNuevo((prev) => ({ ...prev, precio_lista: redondeado.toFixed(2) }));
+  };
+
+  const cambiarStockNuevo = (delta: number) => {
+    const actual = parseInt(formNuevo.stock_actual, 10) || 0;
+    const nuevo = Math.max(0, actual + delta);
+    setFormNuevo((prev) => ({ ...prev, stock_actual: String(nuevo) }));
+  };
+
+  const ajustarPrecioEditar = (sum: number) => {
+    const actual = parseFloat(formEditar.precio_lista) || 0;
+    const nuevo = Math.max(0, actual + sum);
+    setFormEditar((prev) => ({ ...prev, precio_lista: nuevo.toFixed(2) }));
+  };
+
+  const redondearPrecioEditar = () => {
+    const actual = parseFloat(formEditar.precio_lista) || 0;
+    const redondeado = Math.round(actual);
+    setFormEditar((prev) => ({ ...prev, precio_lista: redondeado.toFixed(2) }));
+  };
+
+  const setRestockAmount = (delta: number) => {
+    if (!itemAEditar) return;
+    const stockBase = itemAEditar.stock_actual ?? 0;
+    setRestockDelta(delta);
+    setFormEditar((prev) => ({
+      ...prev,
+      stock_actual: String(Math.max(0, stockBase + delta)),
+    }));
+  };
+
+  const eliminarAroPersonalizado = (e: React.MouseEvent, aro: string) => {
+    e.stopPropagation();
+    if (!negocio) return;
+    removeCustomAro(negocio.id, aro);
+    setCatalogVersion((v) => v + 1);
+  };
+
   const eliminarMarcaPersonalizada = (e: React.MouseEvent, m: string) => {
     e.stopPropagation();
     if (!negocio) return;
@@ -838,9 +827,9 @@ export default function Stock() {
   const abrirModalNuevo = (tipoPorDefecto: "producto" | "servicio" = "producto") => {
     setErrorNuevo(null);
     setCandidatosDuplicados(null);
+    setInlineAroAbierto(false);
     setInlineMarcaAbierto(false);
     setInlineMedidaAbierto(false);
-    setMostrarGridCategorias(true);
 
     if (tipoPorDefecto === "servicio") {
       setCategoriaActivaId("servicios");
@@ -850,7 +839,7 @@ export default function Stock() {
         medida: "",
         marca: "",
         estado_uso: "nuevo",
-        precio_lista: "",
+        precio_lista: "7.00",
         precio_compra: "0.00",
         stock_actual: "0",
         stock_minimo: "0",
@@ -858,14 +847,15 @@ export default function Stock() {
     } else {
       setCategoriaActivaId("llantas");
       setTipoItemNuevo("producto");
+      setAroActivo("Aro 15");
       setFormNuevo({
-        nombre: "Llanta 185/65 R15 Michelin",
+        nombre: "Llanta 185/65 R15 Goodyear",
         medida: "185/65 R15",
-        marca: "Michelin",
+        marca: "Goodyear",
         estado_uso: "nuevo",
-        precio_lista: "",
-        precio_compra: "",
-        stock_actual: "2",
+        precio_lista: "185.00",
+        precio_compra: "135.00",
+        stock_actual: "4",
         stock_minimo: "2",
       });
     }
@@ -910,7 +900,7 @@ export default function Stock() {
             estado_uso: null,
             precio_lista: formNuevo.precio_lista.trim() || "0.00",
             precio_compra: "0.00",
-            clasificacion: null,
+            clasificacion: "servicio",
             stock_actual: 0,
             stock_minimo: 0,
             activo: true,
@@ -954,18 +944,8 @@ export default function Stock() {
       precio_compra: item.precio_compra || "",
       stock_actual: String(item.stock_actual ?? 0),
       stock_minimo: String(item.stock_minimo ?? 0),
+      activo: item.activo !== false,
     });
-  };
-
-  const aplicarRestockRapido = (delta: number) => {
-    if (!itemAEditar) return;
-    const nuevoDelta = restockDelta + delta;
-    setRestockDelta(nuevoDelta);
-    const stockBase = itemAEditar.stock_actual ?? 0;
-    setFormEditar((prev) => ({
-      ...prev,
-      stock_actual: String(Math.max(0, stockBase + nuevoDelta)),
-    }));
   };
 
   const submitEditarItem = async (e: FormEvent) => {
@@ -988,11 +968,13 @@ export default function Stock() {
           precio_compra: formEditar.precio_compra.trim() || "0.00",
           stock_actual: Math.max(0, parseInt(formEditar.stock_actual, 10) || 0),
           stock_minimo: Math.max(0, parseInt(formEditar.stock_minimo, 10) || 0),
+          activo: formEditar.activo,
         });
       } else {
         await api.updateProducto(negocio.id, itemAEditar.id, {
           nombre: formEditar.nombre.trim(),
           precio_lista: formEditar.precio_lista.trim() || "0.00",
+          activo: formEditar.activo,
         });
       }
 
@@ -1653,12 +1635,24 @@ export default function Stock() {
             role="dialog"
             aria-modal="true"
           >
+            {/* Tirador táctil superior para móvil */}
+            <div className={styles.dragHandle} />
+
             <div className={styles.modalHeader}>
-              <div>
-                <h2 className={styles.modalTitle}>Nuevo Producto o Servicio</h2>
-                <p className={styles.modalSubtitle}>
-                  Asistente inteligente de catálogo para {negocio.nombre}
-                </p>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div className={styles.modalHeaderIcon}>
+                  {tipoItemNuevo === "producto" ? "🛞" : "🛠️"}
+                </div>
+                <div>
+                  <h2 className={styles.modalTitle}>
+                    {tipoItemNuevo === "producto"
+                      ? "Registrar Producto en Stock"
+                      : "Registrar Servicio"}
+                  </h2>
+                  <p className={styles.modalSubtitle}>
+                    {negocio.nombre} • Ingreso Rápido Asistido
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
@@ -1666,670 +1660,744 @@ export default function Stock() {
                 onClick={() => setModalNuevoAbierto(false)}
                 aria-label="Cerrar modal"
               >
-                <CloseIcon size={20} />
+                <CloseIcon size={18} />
               </button>
             </div>
 
             <form onSubmit={(e) => submitNuevoItem(e, false)} className={styles.modalForm}>
-              {/* Selector Visual de Categoría Base */}
-              {mostrarGridCategorias ? (
-                <div>
-                  <p className={styles.categorySelectorTitle}>
-                    1. Selecciona la categoría del ítem:
-                  </p>
-                  <div className={styles.categoryGrid}>
-                    {todasCategorias.map((cat) => (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        className={`${styles.categoryCard} ${categoriaActivaId === cat.id ? styles.categoryCardActive : ""}`}
-                        onClick={() => seleccionarCategoria(cat)}
-                      >
-                        <span className={styles.categoryCardIcon}>{cat.icono}</span>
-                        <span className={styles.categoryCardName}>{cat.nombre}</span>
-                        <span className={styles.categoryCardDesc}>{cat.descripcion}</span>
-                      </button>
-                    ))}
+              <div className={styles.modalBody}>
+                {/* 1. Selector Visual de Categoría (Píldoras Horizontales Táctiles) */}
+                <div className={styles.chipsSection}>
+                  <div className={styles.chipsSectionHeader}>
+                    <span className={styles.chipsLabel}>1. Categoría de Registro:</span>
                   </div>
-                </div>
-              ) : (
-                <div className={styles.categoryBannerSelected}>
-                  <div className={styles.categoryBannerInfo}>
-                    <span>{categoriaActual.icono}</span>
-                    <span>
-                      Categoría: <strong>{categoriaActual.nombre}</strong>
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className={styles.categoryBannerChangeBtn}
-                    onClick={() => setMostrarGridCategorias(true)}
-                  >
-                    ← Cambiar categoría
-                  </button>
-                </div>
-              )}
-
-              {/* ============================================================= */}
-              {/* CASCADA 1: LLANTAS                                            */}
-              {/* ============================================================= */}
-              {categoriaActivaId === "llantas" && (
-                <div>
-                  {/* Selector de Marcas */}
-                  <div className={styles.chipsSection}>
-                    <div className={styles.chipsSectionHeader}>
-                      <span className={styles.chipsLabel}>Marca comercial:</span>
-                      {!inlineMarcaAbierto && (
+                  <div className={styles.aroTabsRow}>
+                    {todasCategorias.map((cat) => {
+                      const activa = categoriaActivaId === cat.id;
+                      return (
                         <button
+                          key={cat.id}
                           type="button"
-                          className={styles.categoryBannerChangeBtn}
-                          onClick={() => setInlineMarcaAbierto(true)}
+                          className={`${styles.aroTab} ${activa ? styles.aroTabActive : ""}`}
+                          onClick={() => seleccionarCategoria(cat)}
                         >
-                          + Otra marca
+                          <span>{cat.icono}</span>
+                          <span>{cat.nombre}</span>
+                          {activa && <CheckIcon size={12} />}
                         </button>
-                      )}
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ============================================================= */}
+                {/* CASCADA 1: LLANTAS                                            */}
+                {/* ============================================================= */}
+                {categoriaActivaId === "llantas" && (
+                  <div className={styles.guidedCard}>
+                    <div className={styles.guidedCardHeader}>
+                      <div className={styles.guidedCardTitle}>
+                        <TireIcon size={18} />
+                        <span>Especificaciones de la Llanta</span>
+                      </div>
+                      <span className={styles.guidedBadge}>Paso Guiado</span>
                     </div>
 
-                    {inlineMarcaAbierto && (
-                      <div className={styles.inlineAddBox}>
-                        <input
-                          type="text"
-                          className={styles.inlineAddInput}
-                          placeholder="Escribe la nueva marca (ej. Otani, Triangle...)"
-                          value={nuevaMarcaTexto}
-                          onChange={(e) => setNuevaMarcaTexto(e.target.value)}
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          className={styles.inlineAddBtn}
-                          onClick={guardarNuevaMarca}
-                        >
-                          Guardar y usar
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.inlineCancelBtn}
-                          onClick={() => setInlineMarcaAbierto(false)}
-                        >
-                          ✕
-                        </button>
+                    {/* Selector de Aros */}
+                    <div className={styles.chipsSection}>
+                      <div className={styles.chipsSectionHeader}>
+                        <span className={styles.chipsLabel}>Tamaño de Aro:</span>
+                        {!inlineAroAbierto && (
+                          <button
+                            type="button"
+                            className={styles.chipAdd}
+                            style={{ padding: "3px 8px", borderRadius: "8px", fontSize: "11px", cursor: "pointer" }}
+                            onClick={() => setInlineAroAbierto(true)}
+                          >
+                            + Otro aro
+                          </button>
+                        )}
                       </div>
-                    )}
 
-                    <div className={styles.chipsRow}>
-                      {todasMarcasLlantas.map((m) => {
-                        const esCustom = customCatalog.marcasPersonalizadas.includes(m);
-                        const activa = formNuevo.marca.toLowerCase() === m.toLowerCase();
-                        return (
+                      {inlineAroAbierto && (
+                        <div className={styles.inlineAddBox}>
+                          <input
+                            type="text"
+                            className={styles.inlineAddInput}
+                            placeholder="Ej. Aro 12, Aro 19, Aro 22.5..."
+                            value={nuevoAroTexto}
+                            onChange={(e) => setNuevoAroTexto(e.target.value)}
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            className={styles.inlineAddBtn}
+                            onClick={guardarNuevoAro}
+                          >
+                            Guardar y usar
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.inlineCancelBtn}
+                            onClick={() => setInlineAroAbierto(false)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
+
+                      <div className={styles.aroTabsRow}>
+                        {listaAros.map((aro) => {
+                          const esCustom = customCatalog.arosPersonalizados?.includes(aro);
+                          const activa = aroActivo === aro;
+                          return (
+                            <button
+                              key={aro}
+                              type="button"
+                              className={`${styles.aroTab} ${activa ? styles.aroTabActive : ""}`}
+                              onClick={() => seleccionarAroLlanta(aro)}
+                            >
+                              <span>{aro}</span>
+                              {activa && <CheckIcon size={12} />}
+                              {esCustom && (
+                                <span
+                                  className={styles.chipDeleteBtn}
+                                  onClick={(e) => eliminarAroPersonalizado(e, aro)}
+                                  title="Eliminar de mi lista"
+                                >
+                                  ✕
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Selector de Medidas por Aro */}
+                    <div className={styles.chipsSection}>
+                      <div className={styles.chipsSectionHeader}>
+                        <span className={styles.chipsLabel}>Medida Exacta ({aroActivo}):</span>
+                        {!inlineMedidaAbierto && (
+                          <button
+                            type="button"
+                            className={styles.chipAdd}
+                            style={{ padding: "3px 8px", borderRadius: "8px", fontSize: "11px", cursor: "pointer" }}
+                            onClick={() => setInlineMedidaAbierto(true)}
+                          >
+                            + Otra medida
+                          </button>
+                        )}
+                      </div>
+
+                      {inlineMedidaAbierto && (
+                        <div className={styles.inlineAddBox}>
+                          <input
+                            type="text"
+                            className={styles.inlineAddInput}
+                            placeholder="Ej. 185/65 R15 o 195/70 R14..."
+                            value={nuevaMedidaTexto}
+                            onChange={(e) => setNuevaMedidaTexto(e.target.value)}
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            className={styles.inlineAddBtn}
+                            onClick={guardarNuevaMedida}
+                          >
+                            Guardar y usar
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.inlineCancelBtn}
+                            onClick={() => setInlineMedidaAbierto(false)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
+
+                      <div className={styles.chipsRow}>
+                        {medidasFiltradas.map((med) => {
+                          const esCustom = customCatalog.medidasPersonalizadas.some(
+                            (item) => item.medida.toUpperCase() === med.toUpperCase(),
+                          );
+                          const activa = formNuevo.medida.toUpperCase() === med.toUpperCase();
+                          return (
+                            <button
+                              key={med}
+                              type="button"
+                              className={`${styles.chip} ${activa ? styles.chipActive : ""}`}
+                              onClick={() => seleccionarMedidaLlanta(med)}
+                            >
+                              <span>{med}</span>
+                              {activa && <CheckIcon size={12} />}
+                              {esCustom && (
+                                <span
+                                  className={styles.chipDeleteBtn}
+                                  onClick={(e) => eliminarMedidaPersonalizada(e, med)}
+                                  title="Eliminar de mi lista"
+                                >
+                                  ✕
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Selector de Marcas */}
+                    <div className={styles.chipsSection}>
+                      <div className={styles.chipsSectionHeader}>
+                        <span className={styles.chipsLabel}>Marca del Neumático:</span>
+                        {!inlineMarcaAbierto && (
+                          <button
+                            type="button"
+                            className={styles.chipAdd}
+                            style={{ padding: "3px 8px", borderRadius: "8px", fontSize: "11px", cursor: "pointer" }}
+                            onClick={() => setInlineMarcaAbierto(true)}
+                          >
+                            + Otra marca (China/Económica)
+                          </button>
+                        )}
+                      </div>
+
+                      {inlineMarcaAbierto && (
+                        <div className={styles.inlineAddBox}>
+                          <input
+                            type="text"
+                            className={styles.inlineAddInput}
+                            placeholder="Escribe la marca (ej. Linglong, Triangle, Otani...)"
+                            value={nuevaMarcaTexto}
+                            onChange={(e) => setNuevaMarcaTexto(e.target.value)}
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            className={styles.inlineAddBtn}
+                            onClick={guardarNuevaMarca}
+                          >
+                            Guardar y usar
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.inlineCancelBtn}
+                            onClick={() => setInlineMarcaAbierto(false)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
+
+                      <div className={styles.chipsRow}>
+                        {todasMarcasLlantas.map((m) => {
+                          const esCustom = customCatalog.marcasPersonalizadas.includes(m);
+                          const activa = formNuevo.marca.toLowerCase() === m.toLowerCase();
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              className={`${styles.chip} ${activa ? styles.chipActive : ""}`}
+                              onClick={() => seleccionarMarcaLlanta(m)}
+                            >
+                              <span>{m}</span>
+                              {activa && <CheckIcon size={12} />}
+                              {esCustom && (
+                                <span
+                                  className={styles.chipDeleteBtn}
+                                  onClick={(e) => eliminarMarcaPersonalizada(e, m)}
+                                  title="Eliminar de mi lista"
+                                >
+                                  ✕
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Condición: Nuevo o Usado */}
+                    <div className={styles.field}>
+                      <span className={styles.label}>Estado del Neumático</span>
+                      <div className={styles.radioPills}>
+                        <label
+                          className={`${styles.radioPill} ${formNuevo.estado_uso === "nuevo" ? styles.radioPillActive : ""}`}
+                        >
+                          <input
+                            type="radio"
+                            name="llanta_condicion"
+                            checked={formNuevo.estado_uso === "nuevo"}
+                            onChange={() => seleccionarCondicionLlanta("nuevo")}
+                          />
+                          <span>✨ Nueva (Sellada)</span>
+                        </label>
+                        <label
+                          className={`${styles.radioPill} ${formNuevo.estado_uso === "usado" ? styles.radioPillActive : ""}`}
+                        >
+                          <input
+                            type="radio"
+                            name="llanta_condicion"
+                            checked={formNuevo.estado_uso === "usado"}
+                            onChange={() => seleccionarCondicionLlanta("usado")}
+                          />
+                          <span>♻️ De segunda / Seminuevo</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Previsualización en Vivo de Nombre */}
+                    <div className={styles.namePreviewCard}>
+                      <span className={styles.namePreviewIcon}>🏷️</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className={styles.namePreviewLabel}>Nombre automático en catálogo</div>
+                        <div className={styles.namePreviewText} title={formNuevo.nombre}>
+                          {formNuevo.nombre || "Selecciona especificaciones"}
+                        </div>
+                      </div>
+                      <CheckIcon size={18} />
+                    </div>
+                  </div>
+                )}
+
+                {/* ============================================================= */}
+                {/* CASCADA 2: ACEITES Y LUBRICANTES                              */}
+                {/* ============================================================= */}
+                {categoriaActivaId === "aceites" && (
+                  <div className={styles.guidedCard}>
+                    <div className={styles.guidedCardHeader}>
+                      <div className={styles.guidedCardTitle}>
+                        <span>🛢️ Especificaciones del Aceite</span>
+                      </div>
+                      <span className={styles.guidedBadge}>Paso Guiado</span>
+                    </div>
+
+                    {/* Viscosidad */}
+                    <div className={styles.chipsSection}>
+                      <span className={styles.chipsLabel}>Viscosidad / Grado:</span>
+                      <div className={styles.chipsRow}>
+                        {ACEITES_VISCOSIDADES_DEFAULT.map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            className={`${styles.chip} ${viscosidadAceite === v ? styles.chipActive : ""}`}
+                            onClick={() => seleccionarViscosidadAceite(v)}
+                          >
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Marca de Aceite */}
+                    <div className={styles.chipsSection}>
+                      <span className={styles.chipsLabel}>Marca:</span>
+                      <div className={styles.chipsRow}>
+                        {ACEITES_MARCAS_DEFAULT.map((m) => (
                           <button
                             key={m}
                             type="button"
-                            className={`${styles.chip} ${activa ? styles.chipActive : ""}`}
-                            onClick={() => seleccionarMarcaLlanta(m)}
+                            className={`${styles.chip} ${marcaAceite === m ? styles.chipActive : ""}`}
+                            onClick={() => seleccionarMarcaAceite(m)}
                           >
-                            <span>{m}</span>
-                            {esCustom && (
-                              <span
-                                className={styles.chipDeleteBtn}
-                                onClick={(e) => eliminarMarcaPersonalizada(e, m)}
-                                title="Eliminar de mi lista"
-                              >
-                                ✕
-                              </span>
-                            )}
+                            {m}
                           </button>
-                        );
-                      })}
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Presentación */}
+                    <div className={styles.chipsSection}>
+                      <span className={styles.chipsLabel}>Presentación:</span>
+                      <div className={styles.chipsRow}>
+                        {ACEITES_PRESENTACIONES_DEFAULT.map((pres) => (
+                          <button
+                            key={pres}
+                            type="button"
+                            className={`${styles.chip} ${presentacionAceite === pres ? styles.chipActive : ""}`}
+                            onClick={() => seleccionarPresentacionAceite(pres)}
+                          >
+                            {pres}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
+                )}
 
-                  {/* Selector de Medidas por Aro */}
-                  <div className={styles.chipsSection}>
-                    <div className={styles.chipsSectionHeader}>
-                      <span className={styles.chipsLabel}>Medida comercial de llanta:</span>
-                      {!inlineMedidaAbierto && (
-                        <button
-                          type="button"
-                          className={styles.categoryBannerChangeBtn}
-                          onClick={() => setInlineMedidaAbierto(true)}
-                        >
-                          + Otra medida
-                        </button>
-                      )}
-                    </div>
-
-                    {inlineMedidaAbierto && (
-                      <div className={styles.inlineAddBox}>
-                        <select
-                          style={{
-                            background: "#1e293b",
-                            color: "white",
-                            border: "none",
-                            padding: "4px",
-                            borderRadius: "4px",
-                            fontSize: "12px",
-                          }}
-                          value={aroParaNuevaMedida}
-                          onChange={(e) => setAroParaNuevaMedida(e.target.value)}
-                        >
-                          <option value="Aro 13">Aro 13</option>
-                          <option value="Aro 14">Aro 14</option>
-                          <option value="Aro 15">Aro 15</option>
-                          <option value="Aro 16">Aro 16</option>
-                          <option value="Aro 17">Aro 17</option>
-                          <option value="Aro 18+">Aro 18+</option>
-                        </select>
-                        <input
-                          type="text"
-                          className={styles.inlineAddInput}
-                          placeholder="Ej. 235/75 R15"
-                          value={nuevaMedidaTexto}
-                          onChange={(e) => setNuevaMedidaTexto(e.target.value)}
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          className={styles.inlineAddBtn}
-                          onClick={guardarNuevaMedida}
-                        >
-                          Guardar y usar
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.inlineCancelBtn}
-                          onClick={() => setInlineMedidaAbierto(false)}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Filtro de Aros */}
-                    <div className={styles.aroTabsRow}>
+                {/* ============================================================= */}
+                {/* CASCADA 3: PARCHADOS Y SERVICIOS                              */}
+                {/* ============================================================= */}
+                {(categoriaActivaId === "parches_servicios" ||
+                  categoriaActivaId === "parches" ||
+                  categoriaActivaId === "servicios") && (
+                  <div className={styles.guidedCard}>
+                    <div className={styles.typeSelector}>
                       <button
                         type="button"
-                        className={`${styles.aroTab} ${aroActivo === "Todos" ? styles.aroTabActive : ""}`}
-                        onClick={() => setAroActivo("Todos")}
+                        className={`${styles.typeBtn} ${subTipoParchado === "servicio" ? styles.typeBtnActive : ""}`}
+                        onClick={() => cambiarSubTipoParchado("servicio")}
                       >
-                        Todos
+                        <WrenchIcon size={15} />
+                        <span>🔧 Servicio al Cliente</span>
                       </button>
-                      {todasMedidasPorAro.map((a) => (
-                        <button
-                          key={a.aro}
-                          type="button"
-                          className={`${styles.aroTab} ${aroActivo === a.aro ? styles.aroTabActive : ""}`}
-                          onClick={() => setAroActivo(a.aro)}
-                        >
-                          {a.aro}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Pills de Medidas */}
-                    <div className={styles.chipsRow}>
-                      {medidasFiltradas.map((med) => {
-                        const esCustom = customCatalog.medidasPersonalizadas.some(
-                          (item) => item.medida.toUpperCase() === med.toUpperCase(),
-                        );
-                        const activa = formNuevo.medida.toUpperCase() === med.toUpperCase();
-                        return (
-                          <button
-                            key={med}
-                            type="button"
-                            className={`${styles.chip} ${activa ? styles.chipActive : ""}`}
-                            onClick={() => seleccionarMedidaLlanta(med)}
-                          >
-                            <span>{med}</span>
-                            {esCustom && (
-                              <span
-                                className={styles.chipDeleteBtn}
-                                onClick={(e) => eliminarMedidaPersonalizada(e, med)}
-                                title="Eliminar de mi lista"
-                              >
-                                ✕
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Condición: Nuevo o Usado */}
-                  <div className={styles.field}>
-                    <span className={styles.label}>Condición del Neumático</span>
-                    <div className={styles.radioPills}>
-                      <label
-                        className={`${styles.radioPill} ${formNuevo.estado_uso === "nuevo" ? styles.radioPillActive : ""}`}
+                      <button
+                        type="button"
+                        className={`${styles.typeBtn} ${subTipoParchado === "insumo" ? styles.typeBtnActive : ""}`}
+                        onClick={() => cambiarSubTipoParchado("insumo")}
                       >
-                        <input
-                          type="radio"
-                          name="llanta_condicion"
-                          checked={formNuevo.estado_uso === "nuevo"}
-                          onChange={() => seleccionarCondicionLlanta("nuevo")}
-                        />
-                        <span>✨ Nuevo</span>
-                      </label>
-                      <label
-                        className={`${styles.radioPill} ${formNuevo.estado_uso === "usado" ? styles.radioPillActive : ""}`}
-                      >
-                        <input
-                          type="radio"
-                          name="llanta_condicion"
-                          checked={formNuevo.estado_uso === "usado"}
-                          onChange={() => seleccionarCondicionLlanta("usado")}
-                        />
-                        <span>♻️ De segunda / Seminuevo</span>
-                      </label>
+                        <BoxIcon size={15} />
+                        <span>📦 Insumo Físico</span>
+                      </button>
                     </div>
-                  </div>
-                </div>
-              )}
 
-              {/* ============================================================= */}
-              {/* CASCADA 2: ACEITES Y LUBRICANTES                              */}
-              {/* ============================================================= */}
-              {categoriaActivaId === "aceites" && (
-                <div>
-                  {/* Viscosidad */}
-                  <div className={styles.chipsSection}>
-                    <span className={styles.chipsLabel}>Viscosidad / Grado:</span>
-                    <div className={styles.chipsRow}>
-                      {ACEITES_VISCOSIDADES_DEFAULT.map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          className={`${styles.chip} ${viscosidadAceite === v ? styles.chipActive : ""}`}
-                          onClick={() => seleccionarViscosidadAceite(v)}
-                        >
-                          {v}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Marca de Aceite */}
-                  <div className={styles.chipsSection}>
-                    <span className={styles.chipsLabel}>Marca:</span>
-                    <div className={styles.chipsRow}>
-                      {ACEITES_MARCAS_DEFAULT.map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          className={`${styles.chip} ${marcaAceite === m ? styles.chipActive : ""}`}
-                          onClick={() => seleccionarMarcaAceite(m)}
-                        >
-                          {m}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Presentación */}
-                  <div className={styles.chipsSection}>
-                    <span className={styles.chipsLabel}>Presentación:</span>
-                    <div className={styles.chipsRow}>
-                      {ACEITES_PRESENTACIONES_DEFAULT.map((pres) => (
-                        <button
-                          key={pres}
-                          type="button"
-                          className={`${styles.chip} ${presentacionAceite === pres ? styles.chipActive : ""}`}
-                          onClick={() => seleccionarPresentacionAceite(pres)}
-                        >
-                          {pres}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ============================================================= */}
-              {/* CASCADA 3: PARCHADOS Y SERVICIOS (UNIFICADO)                  */}
-              {/* ============================================================= */}
-              {(categoriaActivaId === "parches_servicios" ||
-                categoriaActivaId === "parches" ||
-                categoriaActivaId === "servicios") && (
-                <div className={styles.chipsSection} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                  {/* Selector de Sub-tipo: Servicio al Cliente vs Insumo Físico */}
-                  <div className={styles.typeSelector}>
-                    <button
-                      type="button"
-                      className={`${styles.typeBtn} ${subTipoParchado === "servicio" ? styles.typeBtnActive : ""}`}
-                      onClick={() => cambiarSubTipoParchado("servicio")}
-                    >
-                      <WrenchIcon size={15} />
-                      <span>🔧 Servicio al Cliente (Mano de Obra)</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.typeBtn} ${subTipoParchado === "insumo" ? styles.typeBtnActive : ""}`}
-                      onClick={() => cambiarSubTipoParchado("insumo")}
-                    >
-                      <BoxIcon size={15} />
-                      <span>📦 Insumo Físico (Cajas / Materiales)</span>
-                    </button>
-                  </div>
-
-                  {subTipoParchado === "servicio" ? (
-                    <>
-                      {/* Servicios frecuentes */}
+                    {subTipoParchado === "servicio" ? (
                       <div>
-                        <span className={styles.chipsLabel}>1. Tipo de Servicio / Trabajo:</span>
+                        <span className={styles.chipsLabel}>Servicio o Trabajo Común:</span>
                         <div className={styles.chipsRow} style={{ marginTop: "6px" }}>
-                          {PARCHADOS_SERVICIOS_PLANTILLAS_DEFAULT.map((plantilla) => (
+                          {SERVICIOS_TALLER_COMUNES.map((plantilla) => (
                             <button
                               key={plantilla}
                               type="button"
                               className={`${styles.chip} ${parcheServicioNombre === plantilla ? styles.chipActive : ""}`}
-                              onClick={() => seleccionarServicioParchado(plantilla)}
+                              onClick={() => {
+                                setParcheServicioNombre(plantilla);
+                                setFormNuevo((prev) => ({
+                                  ...prev,
+                                  nombre: plantilla,
+                                  medida: "",
+                                  marca: "",
+                                }));
+                              }}
                             >
-                              {plantilla}
+                              <span>{plantilla}</span>
+                              {parcheServicioNombre === plantilla && <CheckIcon size={12} />}
                             </button>
                           ))}
                         </div>
                       </div>
-
-                      {/* Medida / Tamaño del Servicio */}
+                    ) : (
                       <div>
-                        <span className={styles.chipsLabel}>2. Medida o Especificación del Parche:</span>
+                        <span className={styles.chipsLabel}>Material o Insumo Físico:</span>
                         <div className={styles.chipsRow} style={{ marginTop: "6px" }}>
-                          {PARCHADOS_MEDIDAS_SERVICIOS_DEFAULT.map((med) => (
-                            <button
-                              key={med}
-                              type="button"
-                              className={`${styles.chip} ${parcheServicioMedida === med ? styles.chipActive : ""}`}
-                              onClick={() => seleccionarMedidaServicioParchado(med)}
-                            >
-                              {med}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      {/* Tipo de Insumo Físico */}
-                      <div>
-                        <span className={styles.chipsLabel}>1. Material / Insumo:</span>
-                        <div className={styles.chipsRow} style={{ marginTop: "6px" }}>
-                          {PARCHES_PLANTILLAS_DEFAULT.map((insumo) => (
+                          {INSUMOS_TALLER_COMUNES.map((insumo) => (
                             <button
                               key={insumo}
                               type="button"
                               className={`${styles.chip} ${parcheInsumoNombre === insumo ? styles.chipActive : ""}`}
-                              onClick={() => seleccionarInsumoParchado(insumo)}
+                              onClick={() => {
+                                setParcheInsumoNombre(insumo);
+                                setFormNuevo((prev) => ({
+                                  ...prev,
+                                  nombre: insumo,
+                                  marca: "Taller",
+                                  medida: "",
+                                }));
+                              }}
                             >
-                              {insumo}
+                              <span>{insumo}</span>
+                              {parcheInsumoNombre === insumo && <CheckIcon size={12} />}
                             </button>
                           ))}
                         </div>
                       </div>
-
-                      {/* Marca del Insumo */}
-                      <div>
-                        <span className={styles.chipsLabel}>2. Marca del Insumo:</span>
-                        <div className={styles.chipsRow} style={{ marginTop: "6px" }}>
-                          {PARCHES_MARCAS_DEFAULT.map((marca) => (
-                            <button
-                              key={marca}
-                              type="button"
-                              className={`${styles.chip} ${parcheInsumoMarca === marca ? styles.chipActive : ""}`}
-                              onClick={() => seleccionarMarcaInsumoParchado(marca)}
-                            >
-                              {marca}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Medida / Código del Insumo */}
-                      <div>
-                        <span className={styles.chipsLabel}>3. Medida / Código técnico:</span>
-                        <div className={styles.chipsRow} style={{ marginTop: "6px" }}>
-                          {PARCHES_MEDIDAS_DEFAULT.map((medida) => (
-                            <button
-                              key={medida}
-                              type="button"
-                              className={`${styles.chip} ${parcheInsumoMedida === medida ? styles.chipActive : ""}`}
-                              onClick={() => seleccionarMedidaInsumoParchado(medida)}
-                            >
-                              {medida}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Presentación del Insumo */}
-                      <div>
-                        <span className={styles.chipsLabel}>4. Presentación de Compra:</span>
-                        <div className={styles.chipsRow} style={{ marginTop: "6px" }}>
-                          {PARCHES_PRESENTACIONES_DEFAULT.map((pres) => (
-                            <button
-                              key={pres}
-                              type="button"
-                              className={`${styles.chip} ${parcheInsumoPresentacion === pres ? styles.chipActive : ""}`}
-                              onClick={() => seleccionarPresentacionInsumoParchado(pres)}
-                            >
-                              {pres}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* ============================================================= */}
-              {/* CASCADA 4: ADITIVOS Y FLUIDOS                                 */}
-              {/* ============================================================= */}
-              {categoriaActivaId === "aditivos" && (
-                <div className={styles.chipsSection}>
-                  <span className={styles.chipsLabel}>Aditivos y fluidos comunes:</span>
-                  <div className={styles.chipsRow}>
-                    {ADITIVOS_PLANTILLAS_DEFAULT.map((plantilla) => (
-                      <button
-                        key={plantilla}
-                        type="button"
-                        className={`${styles.chip} ${formNuevo.nombre === plantilla ? styles.chipActive : ""}`}
-                        onClick={() =>
-                          setFormNuevo((prev) => ({ ...prev, nombre: plantilla }))
-                        }
-                      >
-                        {plantilla}
-                      </button>
-                    ))}
+                    )}
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* ============================================================= */}
-              {/* CASCADA 5: ACCESORIOS Y REPUESTOS                             */}
-              {/* ============================================================= */}
-              {categoriaActivaId === "accesorios" && (
-                <div className={styles.chipsSection}>
-                  <span className={styles.chipsLabel}>Accesorios frecuentes:</span>
-                  <div className={styles.chipsRow}>
-                    {ACCESORIOS_PLANTILLAS_DEFAULT.map((plantilla) => (
-                      <button
-                        key={plantilla}
-                        type="button"
-                        className={`${styles.chip} ${formNuevo.nombre === plantilla ? styles.chipActive : ""}`}
-                        onClick={() =>
-                          setFormNuevo((prev) => ({ ...prev, nombre: plantilla }))
-                        }
-                      >
-                        {plantilla}
-                      </button>
-                    ))}
+                {/* ============================================================= */}
+                {/* CASCADA 4: ADITIVOS Y FLUIDOS                                 */}
+                {/* ============================================================= */}
+                {categoriaActivaId === "aditivos" && (
+                  <div className={styles.guidedCard}>
+                    <span className={styles.chipsLabel}>Aditivos y fluidos comunes:</span>
+                    <div className={styles.chipsRow}>
+                      {ADITIVOS_PLANTILLAS_DEFAULT.map((plantilla) => (
+                        <button
+                          key={plantilla}
+                          type="button"
+                          className={`${styles.chip} ${formNuevo.nombre === plantilla ? styles.chipActive : ""}`}
+                          onClick={() =>
+                            setFormNuevo((prev) => ({ ...prev, nombre: plantilla }))
+                          }
+                        >
+                          {plantilla}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Campo de Nombre Auto-generado (Editable) */}
-              <label className={styles.field}>
-                <span className={styles.label}>
-                  {tipoItemNuevo === "producto"
-                    ? "Nombre final del Producto *"
-                    : "Nombre del Servicio *"}
-                </span>
-                <input
-                  required
-                  type="text"
-                  className={styles.input}
-                  placeholder="Se genera automáticamente con tus elecciones"
-                  value={formNuevo.nombre}
-                  onChange={(e) => setFormNuevo({ ...formNuevo, nombre: e.target.value })}
-                />
-              </label>
+                {/* ============================================================= */}
+                {/* CASCADA 5: ACCESORIOS Y REPUESTOS                             */}
+                {/* ============================================================= */}
+                {categoriaActivaId === "accesorios" && (
+                  <div className={styles.guidedCard}>
+                    <span className={styles.chipsLabel}>Accesorios frecuentes:</span>
+                    <div className={styles.chipsRow}>
+                      {ACCESORIOS_PLANTILLAS_DEFAULT.map((plantilla) => (
+                        <button
+                          key={plantilla}
+                          type="button"
+                          className={`${styles.chip} ${formNuevo.nombre === plantilla ? styles.chipActive : ""}`}
+                          onClick={() =>
+                            setFormNuevo((prev) => ({ ...prev, nombre: plantilla }))
+                          }
+                        >
+                          {plantilla}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-              {/* Precios y Costos */}
-              <div className={styles.formRow}>
-                <label className={styles.field}>
-                  <span className={styles.label}>
-                    {tipoItemNuevo === "producto"
-                      ? "Precio de Venta (S/) *"
-                      : "Precio del Servicio (S/) *"}
-                  </span>
-                  <input
-                    required
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className={styles.input}
-                    placeholder="0.00"
-                    value={formNuevo.precio_lista}
-                    onChange={(e) =>
-                      setFormNuevo({ ...formNuevo, precio_lista: e.target.value })
-                    }
-                  />
-                </label>
-
-                {tipoItemNuevo === "producto" && (
+                {/* Campo de Nombre Manual solo si NO es llanta (las llantas usan la previsualización automática limpia) */}
+                {categoriaActivaId !== "llantas" && (
                   <label className={styles.field}>
-                    <span className={styles.label}>Costo de Compra (S/)</span>
+                    <span className={styles.label}>
+                      {tipoItemNuevo === "producto"
+                        ? "Nombre del Producto *"
+                        : "Nombre del Servicio *"}
+                    </span>
                     <input
-                      type="number"
-                      step="0.01"
-                      min="0"
+                      required
+                      type="text"
                       className={styles.input}
-                      placeholder="0.00 (Opcional)"
-                      value={formNuevo.precio_compra}
-                      onChange={(e) =>
-                        setFormNuevo({ ...formNuevo, precio_compra: e.target.value })
-                      }
+                      placeholder="Escribe el nombre del ítem o trabajo"
+                      value={formNuevo.nombre}
+                      onChange={(e) => setFormNuevo({ ...formNuevo, nombre: e.target.value })}
                     />
                   </label>
                 )}
-              </div>
 
-              {/* Margen de Ganancia en Vivo */}
-              {gananciaNuevo.tieneCosto && (
-                <div className={styles.profitMarginBox}>
-                  <span>💰 Ganancia por unidad: {formatMoney(gananciaNuevo.ganancia.toFixed(2))}</span>
-                  <span>Margen: {gananciaNuevo.margen}%</span>
-                </div>
-              )}
-
-              {/* Stock Inicial y Mínimo */}
-              {tipoItemNuevo === "producto" && (
-                <div className={styles.formRow}>
-                  <label className={styles.field}>
-                    <span className={styles.label}>Stock Inicial</span>
-                    <input
-                      type="number"
-                      min="0"
-                      className={styles.input}
-                      value={formNuevo.stock_actual}
-                      onChange={(e) =>
-                        setFormNuevo({ ...formNuevo, stock_actual: e.target.value })
-                      }
-                    />
-                  </label>
-
-                  <label className={styles.field}>
-                    <span className={styles.label}>Stock Mínimo (Alerta)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      className={styles.input}
-                      value={formNuevo.stock_minimo}
-                      onChange={(e) =>
-                        setFormNuevo({ ...formNuevo, stock_minimo: e.target.value })
-                      }
-                    />
-                  </label>
-                </div>
-              )}
-
-              {/* Manejo de Posible Duplicado (Directo encima del botón Guardar) */}
-              {candidatosDuplicados && candidatosDuplicados.length > 0 && (
-                <div ref={duplicateBannerRef} className={styles.duplicateBanner} role="alert">
-                  <div className={styles.duplicateHeader}>
-                    <AlertTriangleIcon size={18} />
-                    <span>⚠️ Posible ítem duplicado detectado</span>
+                {/* ============================================================= */}
+                {/* PRECIOS Y MARGEN (DOS BOLSILLOS)                              */}
+                {/* ============================================================= */}
+                <div className={styles.guidedCard}>
+                  <div className={styles.guidedCardHeader}>
+                    <div className={styles.guidedCardTitle}>
+                      <span>💰 Precios y Márgenes (Dos Bolsillos)</span>
+                    </div>
+                    <span style={{ fontSize: "11px", fontWeight: "700", color: "#5F6368" }}>
+                      Soles (S/)
+                    </span>
                   </div>
-                  <p style={{ margin: 0, fontSize: "13px", color: "#e2e8f0" }}>
-                    Encontramos productos o servicios con nombres similares en tu inventario:
-                  </p>
-                  <div className={styles.candidatosList}>
-                    {candidatosDuplicados.map((c) => (
-                      <div key={c.id} className={styles.candidatoItem}>
-                        <strong>• {c.nombre}</strong>
-                        <span>
-                          {[c.marca, c.medida].filter(Boolean).join(" · ") || "Sin detalles"}
+
+                  <div className={styles.twoPocketGrid}>
+                    {/* Precio de Venta al Cliente */}
+                    <div className={styles.priceCard}>
+                      <span style={{ fontSize: "11px", fontWeight: "700", color: "#1B4332", textTransform: "uppercase" }}>
+                        ¿A cuánto vendes al cliente? *
+                      </span>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: "4px", margin: "6px 0" }}>
+                        <span style={{ fontSize: "16px", fontWeight: "800", color: "#5F6368" }}>S/</span>
+                        <input
+                          required
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className={styles.input}
+                          style={{ fontSize: "20px", fontWeight: "800", padding: "6px 10px", width: "100%" }}
+                          placeholder="0.00"
+                          value={formNuevo.precio_lista}
+                          onChange={(e) =>
+                            setFormNuevo({ ...formNuevo, precio_lista: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className={styles.quickPricePills}>
+                        <button type="button" className={styles.quickPriceBtn} onClick={() => ajustarPrecioNuevo(5)}>+5</button>
+                        <button type="button" className={styles.quickPriceBtn} onClick={() => ajustarPrecioNuevo(10)}>+10</button>
+                        <button type="button" className={styles.quickPriceBtn} onClick={() => ajustarPrecioNuevo(20)}>+20</button>
+                        <button type="button" className={styles.quickPriceBtn} onClick={redondearPrecioNuevo}>Redondear</button>
+                      </div>
+                    </div>
+
+                    {/* Costo del Distribuidor */}
+                    {tipoItemNuevo === "producto" && (
+                      <div className={styles.costCard}>
+                        <span style={{ fontSize: "11px", fontWeight: "700", color: "#5F6368", textTransform: "uppercase" }}>
+                          ¿A cuánto te deja distribuidor?
+                        </span>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "4px", margin: "6px 0" }}>
+                          <span style={{ fontSize: "16px", fontWeight: "800", color: "#5F6368" }}>S/</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className={styles.input}
+                            style={{ fontSize: "20px", fontWeight: "800", padding: "6px 10px", width: "100%" }}
+                            placeholder="0.00 (Opcional)"
+                            value={formNuevo.precio_compra}
+                            onChange={(e) =>
+                              setFormNuevo({ ...formNuevo, precio_compra: e.target.value })
+                            }
+                          />
+                        </div>
+                        <span style={{ fontSize: "10.5px", color: "#5F6368", fontWeight: "500" }}>
+                          Costo de reposición por unidad
                         </span>
                       </div>
-                    ))}
+                    )}
                   </div>
-                  <div className={styles.duplicateActions}>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCandidatosDuplicados(null)}
-                    >
-                      Revisar datos
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="primary"
-                      size="sm"
-                      disabled={guardandoNuevo}
-                      onClick={() => submitNuevoItem(undefined, true)}
-                    >
-                      {guardandoNuevo ? "Guardando…" : "Confirmar: Es otro ítem"}
-                    </Button>
+
+                  {/* Margen de Ganancia en Vivo */}
+                  {gananciaNuevo.tieneCosto && (
+                    <div className={styles.profitCleanBanner}>
+                      <span style={{ fontSize: "20px" }}>💰</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: "13px", fontWeight: "800" }}>
+                            Ganancia Limpia: S/ {gananciaNuevo.ganancia.toFixed(2)} por unidad
+                          </span>
+                          <span style={{ fontSize: "11px", fontWeight: "700", background: "#1B4332", color: "#fff", padding: "2px 6px", borderRadius: "6px" }}>
+                            +{gananciaNuevo.margen}%
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#475569", marginTop: "2px" }}>
+                          Capital a reponer: <strong style={{ color: "#191C1E" }}>S/ {parseFloat(formNuevo.precio_compra || "0").toFixed(2)}</strong> (No tocar para gastos)
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ============================================================= */}
+                {/* EXISTENCIAS / STOCK STEPPER                                   */}
+                {/* ============================================================= */}
+                {tipoItemNuevo === "producto" && (
+                  <div className={styles.guidedCard}>
+                    <div className={styles.guidedCardHeader}>
+                      <div>
+                        <span style={{ fontSize: "12.5px", fontWeight: "800", color: "#191C1E", textTransform: "uppercase" }}>
+                          Existencias a Ingresar
+                        </span>
+                        <span style={{ display: "block", fontSize: "11px", color: "#5F6368" }}>
+                          ¿Cuántas unidades tienes físicamente hoy en tienda?
+                        </span>
+                      </div>
+                      <span className={styles.guidedBadge}>En mostrador</span>
+                    </div>
+
+                    <div className={styles.stepperBox}>
+                      <button
+                        type="button"
+                        className={`${styles.stepperBtn} ${styles.stepperBtnMinus}`}
+                        onClick={() => cambiarStockNuevo(-1)}
+                      >
+                        −
+                      </button>
+                      <div>
+                        <div className={styles.stepperNumber}>{formNuevo.stock_actual || "0"}</div>
+                        <div className={styles.stepperSub}>unidades en tienda</div>
+                      </div>
+                      <button
+                        type="button"
+                        className={`${styles.stepperBtn} ${styles.stepperBtnPlus}`}
+                        onClick={() => cambiarStockNuevo(1)}
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <div className={styles.quickBatchGrid}>
+                      <button type="button" className={styles.quickBatchBtn} onClick={() => cambiarStockNuevo(2)}>
+                        +2 (Par)
+                      </button>
+                      <button type="button" className={styles.quickBatchBtn} onClick={() => cambiarStockNuevo(4)}>
+                        +4 (Juego completo)
+                      </button>
+                      <button type="button" className={styles.quickBatchBtn} onClick={() => cambiarStockNuevo(8)}>
+                        +8 (Lote)
+                      </button>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "8px", borderTop: "1px solid #F4F1EA" }}>
+                      <span style={{ fontSize: "12px", fontWeight: "600", color: "#5F6368" }}>
+                        Avisarme cuando queden menos de:
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        className={styles.input}
+                        style={{ width: "80px", textAlign: "center", padding: "4px 8px", fontSize: "13px" }}
+                        value={formNuevo.stock_minimo}
+                        onChange={(e) =>
+                          setFormNuevo({ ...formNuevo, stock_minimo: e.target.value })
+                        }
+                      />
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {errorNuevo && !candidatosDuplicados && (
-                <div className={styles.errorBox} role="alert">
-                  <p style={{ margin: 0 }}>{errorNuevo}</p>
-                </div>
-              )}
+                {/* Manejo de Posible Duplicado */}
+                {candidatosDuplicados && candidatosDuplicados.length > 0 && (
+                  <div ref={duplicateBannerRef} className={styles.duplicateBanner} role="alert">
+                    <div className={styles.duplicateHeader}>
+                      <AlertTriangleIcon size={18} />
+                      <span>⚠️ Posible ítem duplicado detectado</span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#78350F" }}>
+                      Encontramos productos o servicios con nombres similares en tu inventario:
+                    </p>
+                    <div className={styles.candidatosList}>
+                      {candidatosDuplicados.map((c) => (
+                        <div key={c.id} className={styles.candidatoItem}>
+                          <strong>• {c.nombre}</strong>
+                          <span>
+                            {[c.marca, c.medida].filter(Boolean).join(" · ") || "Sin detalles"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className={styles.duplicateActions}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCandidatosDuplicados(null)}
+                      >
+                        Revisar datos
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        disabled={guardandoNuevo}
+                        onClick={() => submitNuevoItem(undefined, true)}
+                      >
+                        {guardandoNuevo ? "Guardando…" : "Confirmar: Es otro ítem"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
-              <div className={styles.modalActions}>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setModalNuevoAbierto(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button
+                {errorNuevo && !candidatosDuplicados && (
+                  <div className={styles.errorBox} role="alert">
+                    <p style={{ margin: 0 }}>{errorNuevo}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Botón Sticky Inferior de Alta Visibilidad */}
+              <div className={styles.modalStickyFooter}>
+                <button
                   type="submit"
                   disabled={guardandoNuevo || !formNuevo.nombre.trim() || !formNuevo.precio_lista}
+                  className={styles.modalPrimaryBtn}
                 >
-                  {guardandoNuevo
-                    ? "Guardando…"
-                    : tipoItemNuevo === "producto"
-                      ? "Guardar Producto"
-                      : "Guardar Servicio"}
-                </Button>
+                  <span>
+                    {guardandoNuevo
+                      ? "Guardando…"
+                      : tipoItemNuevo === "producto"
+                        ? "GUARDAR Y LISTO PARA VENDER ➔"
+                        : "GUARDAR SERVICIO ➔"}
+                  </span>
+                </button>
+                <div style={{ textAlign: "center", fontSize: "11px", fontWeight: "600", color: "#5F6368" }}>
+                  Se sincroniza al catálogo y al mostrador táctil al instante
+                </div>
               </div>
             </form>
           </div>
@@ -2347,16 +2415,29 @@ export default function Stock() {
             role="dialog"
             aria-modal="true"
           >
+            {/* Tirador táctil superior para móvil */}
+            <div className={styles.dragHandle} />
+
             <div className={styles.modalHeader}>
-              <div>
-                <h2 className={styles.modalTitle}>
-                  {esCapital(itemAEditar.clasificacion)
-                    ? "Editar Producto y Reponer Stock"
-                    : "Editar Servicio"}
-                </h2>
-                <p className={styles.modalSubtitle}>
-                  Actualiza precio o ingresa stock de {itemAEditar.nombre}
-                </p>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div className={styles.modalHeaderIcon}>
+                  {esCapital(itemAEditar.clasificacion) ? "🛞" : "🛠️"}
+                </div>
+                <div>
+                  <h2 className={styles.modalTitle}>
+                    {esCapital(itemAEditar.clasificacion)
+                      ? "Editar Llanta / Reponer Stock"
+                      : "Editar Servicio"}
+                  </h2>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
+                    <span style={{ fontSize: "11px", fontFamily: "monospace", fontWeight: "700", background: "#F4F1EA", padding: "1px 6px", borderRadius: "4px", border: "1px solid #E5E0D5" }}>
+                      ID: #{itemAEditar.id}
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#5F6368" }}>
+                      • {negocio.nombre}
+                    </span>
+                  </div>
+                </div>
               </div>
               <button
                 type="button"
@@ -2364,239 +2445,346 @@ export default function Stock() {
                 onClick={() => setItemAEditar(null)}
                 aria-label="Cerrar modal"
               >
-                <CloseIcon size={20} />
+                <CloseIcon size={18} />
               </button>
             </div>
 
             <form onSubmit={submitEditarItem} className={styles.modalForm}>
-              {errorEditar && (
-                <div className={styles.errorBox} role="alert">
-                  <p style={{ margin: 0 }}>{errorEditar}</p>
-                </div>
-              )}
+              <div className={styles.modalBody}>
+                {errorEditar && (
+                  <div className={styles.errorBox} role="alert">
+                    <p style={{ margin: 0 }}>{errorEditar}</p>
+                  </div>
+                )}
 
-              {/* Reposición Rápida de Stock en 1 Clic (Solo productos físicos) */}
-              {esCapital(itemAEditar.clasificacion) && (
-                <div className={styles.quickRestockContainer}>
-                  <div className={styles.quickRestockHeader}>
-                    <strong style={{ color: "#f8fafc" }}>
-                      📦 Reposición Rápida de Mercadería
-                    </strong>
-                    <span style={{ color: "#94a3b8" }}>
-                      Stock actual: <strong>{itemAEditar.stock_actual}</strong>
+                {/* ============================================================= */}
+                {/* 1. REPOSICIÓN RÁPIDA DE STOCK (1 SOLO TOQUE)                  */}
+                {/* ============================================================= */}
+                {esCapital(itemAEditar.clasificacion) && (
+                  <div className={styles.guidedCard}>
+                    <div className={styles.guidedCardHeader}>
+                      <div className={styles.guidedCardTitle}>
+                        <BoxIcon size={16} />
+                        <span>1. Llegó Mercadería (Reposición Rápida)</span>
+                      </div>
+                      <span className={styles.guidedBadge}>1 Solo Toque</span>
+                    </div>
+
+                    {/* Feedback Banner */}
+                    <div className={styles.restockFeedbackBanner}>
+                      <div>
+                        <div style={{ fontSize: "10.5px", fontWeight: "700", color: "#5F6368", textTransform: "uppercase" }}>
+                          Estado de Inventario
+                        </div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginTop: "2px" }}>
+                          <span style={{ fontSize: "13px", color: "#5F6368" }}>
+                            Stock actual: <strong style={{ color: "#191C1E" }}>{itemAEditar.stock_actual} unid.</strong>
+                          </span>
+                          <span style={{ color: "#1B4332", fontWeight: "800" }}>➔</span>
+                          <span style={{ fontSize: "14px", fontWeight: "900", color: "#1B4332", background: "#E8F5E9", padding: "1px 8px", borderRadius: "6px" }}>
+                            {formEditar.stock_actual} unid.
+                            {restockDelta > 0 && (
+                              <span style={{ fontSize: "11px", fontWeight: "600", marginLeft: "4px" }}>
+                                (+{restockDelta} agregadas)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                      <CheckIcon size={22} />
+                    </div>
+
+                    {/* Pastillas de Reposición Rápida */}
+                    <div className={styles.quickStockPills}>
+                      <button
+                        type="button"
+                        className={`${styles.quickStockPill} ${restockDelta === 1 ? styles.quickStockPillActive : ""}`}
+                        onClick={() => setRestockAmount(1)}
+                      >
+                        <span>+1 unidad</span>
+                        <span style={{ fontSize: "11px", opacity: 0.8 }}>+1</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`${styles.quickStockPill} ${restockDelta === 2 ? styles.quickStockPillActive : ""}`}
+                        onClick={() => setRestockAmount(2)}
+                      >
+                        <div style={{ textAlign: "left" }}>
+                          <div style={{ lineHeight: 1.1 }}>+2 unid.</div>
+                          <div style={{ fontSize: "10px", opacity: 0.75, fontWeight: "normal" }}>(Par)</div>
+                        </div>
+                        <span style={{ fontSize: "11px", opacity: 0.8 }}>+2</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`${styles.quickStockPill} ${restockDelta === 4 ? styles.quickStockPillActive : ""}`}
+                        onClick={() => setRestockAmount(4)}
+                      >
+                        <div style={{ textAlign: "left" }}>
+                          <div style={{ lineHeight: 1.1 }}>+4 unid. ★</div>
+                          <div style={{ fontSize: "10px", opacity: 0.75, fontWeight: "normal" }}>(Juego completo)</div>
+                        </div>
+                        <span style={{ fontSize: "11px", opacity: 0.8 }}>+4</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`${styles.quickStockPill} ${restockDelta === 10 ? styles.quickStockPillActive : ""}`}
+                        onClick={() => setRestockAmount(10)}
+                      >
+                        <div style={{ textAlign: "left" }}>
+                          <div style={{ lineHeight: 1.1 }}>+10 unid.</div>
+                          <div style={{ fontSize: "10px", opacity: 0.75, fontWeight: "normal" }}>(Carga taller)</div>
+                        </div>
+                        <span style={{ fontSize: "11px", opacity: 0.8 }}>+10</span>
+                      </button>
+                    </div>
+
+                    {/* Ajuste Fino Manual de Stock */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "8px", borderTop: "1px solid #F4F1EA" }}>
+                      <span style={{ fontSize: "12px", fontWeight: "600", color: "#5F6368" }}>
+                        O ajuste manual exacto de stock:
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        className={styles.input}
+                        style={{ width: "90px", textAlign: "center", padding: "4px 8px", fontSize: "14px", fontWeight: "800" }}
+                        value={formEditar.stock_actual}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormEditar({ ...formEditar, stock_actual: val });
+                          const diff = (parseInt(val, 10) || 0) - (itemAEditar.stock_actual ?? 0);
+                          setRestockDelta(diff > 0 ? diff : 0);
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ============================================================= */}
+                {/* 2. ESPECIFICACIONES / DATOS                                   */}
+                {/* ============================================================= */}
+                <div className={styles.guidedCard}>
+                  <div className={styles.guidedCardHeader}>
+                    <div className={styles.guidedCardTitle}>
+                      <EditIcon size={16} />
+                      <span>2. Datos del {esCapital(itemAEditar.clasificacion) ? "Producto" : "Servicio"}</span>
+                    </div>
+                  </div>
+
+                  <label className={styles.field}>
+                    <span className={styles.label}>
+                      {esCapital(itemAEditar.clasificacion)
+                        ? "Nombre del Producto *"
+                        : "Nombre del Servicio *"}
+                    </span>
+                    <input
+                      required
+                      type="text"
+                      className={styles.input}
+                      value={formEditar.nombre}
+                      onChange={(e) =>
+                        setFormEditar({ ...formEditar, nombre: e.target.value })
+                      }
+                    />
+                  </label>
+
+                  {esCapital(itemAEditar.clasificacion) && (
+                    <>
+                      <div className={styles.formRow}>
+                        <label className={styles.field}>
+                          <span className={styles.label}>Medida / Dimensión</span>
+                          <input
+                            type="text"
+                            className={styles.input}
+                            placeholder="Ej. 185/65 R15"
+                            value={formEditar.medida}
+                            onChange={(e) =>
+                              setFormEditar({ ...formEditar, medida: e.target.value })
+                            }
+                          />
+                        </label>
+
+                        <label className={styles.field}>
+                          <span className={styles.label}>Marca del Fabricante</span>
+                          <input
+                            type="text"
+                            className={styles.input}
+                            placeholder="Ej. Michelin, Goodyear..."
+                            value={formEditar.marca}
+                            onChange={(e) =>
+                              setFormEditar({ ...formEditar, marca: e.target.value })
+                            }
+                          />
+                        </label>
+                      </div>
+
+                      <div className={styles.field}>
+                        <span className={styles.label}>Condición del Producto</span>
+                        <div className={styles.radioPills}>
+                          <label
+                            className={`${styles.radioPill} ${formEditar.estado_uso === "nuevo" ? styles.radioPillActive : ""}`}
+                          >
+                            <input
+                              type="radio"
+                              name="edit_estado_uso"
+                              checked={formEditar.estado_uso === "nuevo"}
+                              onChange={() =>
+                                setFormEditar({ ...formEditar, estado_uso: "nuevo" })
+                              }
+                            />
+                            <span>✨ Nuevo</span>
+                          </label>
+                          <label
+                            className={`${styles.radioPill} ${formEditar.estado_uso === "usado" ? styles.radioPillActive : ""}`}
+                          >
+                            <input
+                              type="radio"
+                              name="edit_estado_uso"
+                              checked={formEditar.estado_uso === "usado"}
+                              onChange={() =>
+                                setFormEditar({ ...formEditar, estado_uso: "usado" })
+                              }
+                            />
+                            <span>♻️ De segunda / Seminuevo</span>
+                          </label>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* ============================================================= */}
+                {/* 3. PRECIOS Y MARGEN (DOS BOLSILLOS)                           */}
+                {/* ============================================================= */}
+                <div className={styles.guidedCard}>
+                  <div className={styles.guidedCardHeader}>
+                    <div className={styles.guidedCardTitle}>
+                      <span>💰 3. Precios y Margen de Utilidad</span>
+                    </div>
+                    <span style={{ fontSize: "11px", fontWeight: "700", color: "#5F6368" }}>
+                      Soles (S/)
                     </span>
                   </div>
 
-                  <div className={styles.quickStockPills}>
-                    <button
-                      type="button"
-                      className={styles.quickStockPill}
-                      onClick={() => aplicarRestockRapido(1)}
-                    >
-                      +1 unidad
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.quickStockPill}
-                      onClick={() => aplicarRestockRapido(2)}
-                    >
-                      +2 unidades
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.quickStockPill}
-                      onClick={() => aplicarRestockRapido(4)}
-                    >
-                      +4 unidades (Juego)
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.quickStockPill}
-                      onClick={() => aplicarRestockRapido(10)}
-                    >
-                      +10 unidades
-                    </button>
+                  <div className={styles.twoPocketGrid}>
+                    {/* Precio de Venta al Cliente */}
+                    <div className={styles.priceCard}>
+                      <span style={{ fontSize: "11px", fontWeight: "700", color: "#1B4332", textTransform: "uppercase" }}>
+                        Precio Venta (Público) *
+                      </span>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: "4px", margin: "6px 0" }}>
+                        <span style={{ fontSize: "16px", fontWeight: "800", color: "#5F6368" }}>S/</span>
+                        <input
+                          required
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className={styles.input}
+                          style={{ fontSize: "20px", fontWeight: "800", padding: "6px 10px", width: "100%" }}
+                          value={formEditar.precio_lista}
+                          onChange={(e) =>
+                            setFormEditar({ ...formEditar, precio_lista: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className={styles.quickPricePills}>
+                        <button type="button" className={styles.quickPriceBtn} onClick={() => ajustarPrecioEditar(5)}>+5</button>
+                        <button type="button" className={styles.quickPriceBtn} onClick={() => ajustarPrecioEditar(10)}>+10</button>
+                        <button type="button" className={styles.quickPriceBtn} onClick={redondearPrecioEditar}>Redondear</button>
+                      </div>
+                    </div>
+
+                    {/* Costo de Compra */}
+                    {esCapital(itemAEditar.clasificacion) && (
+                      <div className={styles.costCard}>
+                        <span style={{ fontSize: "11px", fontWeight: "700", color: "#5F6368", textTransform: "uppercase" }}>
+                          Costo Distribuidor
+                        </span>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "4px", margin: "6px 0" }}>
+                          <span style={{ fontSize: "16px", fontWeight: "800", color: "#5F6368" }}>S/</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className={styles.input}
+                            style={{ fontSize: "20px", fontWeight: "800", padding: "6px 10px", width: "100%" }}
+                            value={formEditar.precio_compra}
+                            onChange={(e) =>
+                              setFormEditar({ ...formEditar, precio_compra: e.target.value })
+                            }
+                          />
+                        </div>
+                        <span style={{ fontSize: "10.5px", color: "#5F6368", fontWeight: "500" }}>
+                          Precio compra por unidad
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  {restockDelta > 0 && (
-                    <p className={styles.stockResultNote}>
-                      ✨ Stock aumentará de {itemAEditar.stock_actual} a{" "}
-                      {parseInt(formEditar.stock_actual, 10)} (+{restockDelta} unidades agregadas)
-                    </p>
+                  {/* Margen en Vivo */}
+                  {gananciaEditar.tieneCosto && (
+                    <div className={styles.profitCleanBanner}>
+                      <span style={{ fontSize: "20px" }}>💰</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: "13px", fontWeight: "800" }}>
+                            Ganancia limpia: S/ {gananciaEditar.ganancia.toFixed(2)} por unidad
+                          </span>
+                          <span style={{ fontSize: "11px", fontWeight: "700", background: "#1B4332", color: "#fff", padding: "2px 6px", borderRadius: "6px" }}>
+                            +{gananciaEditar.margen}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
-              )}
 
-              <label className={styles.field}>
-                <span className={styles.label}>
-                  {esCapital(itemAEditar.clasificacion)
-                    ? "Nombre del Producto *"
-                    : "Nombre del Servicio *"}
-                </span>
-                <input
-                  required
-                  type="text"
-                  className={styles.input}
-                  value={formEditar.nombre}
-                  onChange={(e) =>
-                    setFormEditar({ ...formEditar, nombre: e.target.value })
-                  }
-                />
-              </label>
-
-              {esCapital(itemAEditar.clasificacion) && (
-                <>
-                  <div className={styles.formRow}>
-                    <label className={styles.field}>
-                      <span className={styles.label}>Medida / Especificación</span>
-                      <input
-                        type="text"
-                        className={styles.input}
-                        placeholder="Ej. 185/65 R15 o 10W-40"
-                        value={formEditar.medida}
-                        onChange={(e) =>
-                          setFormEditar({ ...formEditar, medida: e.target.value })
-                        }
-                      />
-                    </label>
-
-                    <label className={styles.field}>
-                      <span className={styles.label}>Marca</span>
-                      <input
-                        type="text"
-                        className={styles.input}
-                        placeholder="Ej. Michelin, Castrol..."
-                        value={formEditar.marca}
-                        onChange={(e) =>
-                          setFormEditar({ ...formEditar, marca: e.target.value })
-                        }
-                      />
-                    </label>
-                  </div>
-
-                  <div className={styles.field}>
-                    <span className={styles.label}>Condición del Producto</span>
-                    <div className={styles.radioPills}>
-                      <label
-                        className={`${styles.radioPill} ${formEditar.estado_uso === "nuevo" ? styles.radioPillActive : ""}`}
-                      >
-                        <input
-                          type="radio"
-                          name="edit_estado_uso"
-                          checked={formEditar.estado_uso === "nuevo"}
-                          onChange={() =>
-                            setFormEditar({ ...formEditar, estado_uso: "nuevo" })
-                          }
-                        />
-                        <span>✨ Nuevo</span>
-                      </label>
-                      <label
-                        className={`${styles.radioPill} ${formEditar.estado_uso === "usado" ? styles.radioPillActive : ""}`}
-                      >
-                        <input
-                          type="radio"
-                          name="edit_estado_uso"
-                          checked={formEditar.estado_uso === "usado"}
-                          onChange={() =>
-                            setFormEditar({ ...formEditar, estado_uso: "usado" })
-                          }
-                        />
-                        <span>♻️ De segunda / Seminuevo</span>
-                      </label>
+                {/* ============================================================= */}
+                {/* 4. VISIBILIDAD EN MOSTRADOR (INTERRUPTOR TÁCTIL)              */}
+                {/* ============================================================= */}
+                <div className={styles.toggleCard}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span style={{ fontSize: "22px" }}>👁️</span>
+                    <div>
+                      <div style={{ fontSize: "13px", fontWeight: "800", color: "#191C1E" }}>
+                        Visible para venta en mostrador
+                      </div>
+                      <div style={{ fontSize: "11px", color: "#5F6368" }}>
+                        {formEditar.activo
+                          ? "Aparecerá en el teclado táctil de cobro rápido"
+                          : "Pausado temporalmente (no saldrá en POS)"}
+                      </div>
                     </div>
                   </div>
-                </>
-              )}
-
-              <div className={styles.formRow}>
-                <label className={styles.field}>
-                  <span className={styles.label}>
-                    {esCapital(itemAEditar.clasificacion)
-                      ? "Precio de Venta (S/) *"
-                      : "Precio del Servicio (S/) *"}
-                  </span>
-                  <input
-                    required
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className={styles.input}
-                    value={formEditar.precio_lista}
-                    onChange={(e) =>
-                      setFormEditar({ ...formEditar, precio_lista: e.target.value })
-                    }
-                  />
-                </label>
-
-                {esCapital(itemAEditar.clasificacion) && (
-                  <label className={styles.field}>
-                    <span className={styles.label}>Costo de Compra (S/)</span>
+                  <label className={styles.toggleSwitch}>
                     <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className={styles.input}
-                      value={formEditar.precio_compra}
-                      onChange={(e) =>
-                        setFormEditar({ ...formEditar, precio_compra: e.target.value })
-                      }
+                      type="checkbox"
+                      className={styles.toggleInput}
+                      checked={formEditar.activo}
+                      onChange={(e) => setFormEditar({ ...formEditar, activo: e.target.checked })}
                     />
+                    <span className={styles.toggleSlider} />
                   </label>
-                )}
+                </div>
               </div>
 
-              {/* Margen en Vivo */}
-              {gananciaEditar.tieneCosto && (
-                <div className={styles.profitMarginBox}>
-                  <span>💰 Ganancia por unidad: {formatMoney(gananciaEditar.ganancia.toFixed(2))}</span>
-                  <span>Margen: {gananciaEditar.margen}%</span>
-                </div>
-              )}
-
-              {esCapital(itemAEditar.clasificacion) && (
-                <div className={styles.formRow}>
-                  <label className={styles.field}>
-                    <span className={styles.label}>Stock Actual Resultante</span>
-                    <input
-                      type="number"
-                      min="0"
-                      className={styles.input}
-                      value={formEditar.stock_actual}
-                      onChange={(e) =>
-                        setFormEditar({ ...formEditar, stock_actual: e.target.value })
-                      }
-                    />
-                  </label>
-
-                  <label className={styles.field}>
-                    <span className={styles.label}>Stock Mínimo (Alerta)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      className={styles.input}
-                      value={formEditar.stock_minimo}
-                      onChange={(e) =>
-                        setFormEditar({ ...formEditar, stock_minimo: e.target.value })
-                      }
-                    />
-                  </label>
-                </div>
-              )}
-
-              <div className={styles.modalActions}>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setItemAEditar(null)}
-                >
-                  Cancelar
-                </Button>
-                <Button
+              {/* Botón Sticky Inferior */}
+              <div className={styles.modalStickyFooter}>
+                <button
                   type="submit"
                   disabled={guardandoEditar || !formEditar.nombre.trim() || !formEditar.precio_lista}
+                  className={styles.modalPrimaryBtn}
                 >
-                  {guardandoEditar ? "Guardando…" : "Guardar Cambios"}
-                </Button>
+                  <span>{guardandoEditar ? "Guardando…" : "GUARDAR CAMBIOS ➔"}</span>
+                </button>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#5F6368", fontWeight: "600" }}>
+                  <span>Tocar fuera para descartar</span>
+                  <span>Stock resultante: {formEditar.stock_actual} unid.</span>
+                </div>
               </div>
             </form>
           </div>

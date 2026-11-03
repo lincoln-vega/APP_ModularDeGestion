@@ -1,43 +1,89 @@
 /**
- * Tokens de diseño del sistema. Un solo lugar para color, tipografía y
- * radios — todo lo demás (componentes, páginas) referencia estas variables
- * en vez de valores sueltos, para que un cambio de paleta no implique tocar
- * cincuenta archivos.
+ * Tokens de diseño del sistema (Identidad Cálida Minimalista).
+ * Un solo lugar para color, tipografía, contrastes y radios táctiles.
  *
- * Convención de color: ámbar = Servicio, azul = Producto, en todo el
- * catálogo de negocios (ver docs/ARCHITECTURE.md). Sirve para que alguien
- * que no lee mucho pueda ubicarse por color antes que por texto.
+ * Diseñado para legibilidad instantánea en pantallas táctiles y móviles
+ * por operarios y dueños de negocio (40 a 50 años).
+ *
+ * Canvas: #FAF9F5 (Hueso cálido, reduce fatiga visual y no deslumbra)
+ * Cartas: #FFFFFF con bordes definidos #E7E5E0
+ * Acentos dinámicos según rubro:
+ *   - Taller / Lubricentro / Llantería: #1B4332 (Verde bosque profundo)
+ *   - Lencería / Boutique / Ropa: #9F1239 (Bordó / Rosa elegante)
+ *   - Administración central: #0F172A (Pizarra profunda)
  */
 :root {
-  --ink: oklch(0.22 0.02 260);
-  --ink-soft: oklch(0.46 0.02 260);
-  --ink-faint: oklch(0.64 0.01 260);
-  --paper: oklch(0.982 0.006 75);
-  --card: oklch(1 0 0);
-  --line: oklch(0.9 0.01 75);
+  /* Lienzo y Superficies */
+  --paper: #FAF9F5;
+  --card: #FFFFFF;
+  --line: #E7E5E0;
+  --line-strong: #D1CEC7;
 
-  --servicio: oklch(0.7 0.17 45);
-  --servicio-ink: oklch(0.32 0.1 45);
-  --producto: oklch(0.55 0.12 235);
-  --producto-ink: oklch(0.97 0.01 235);
-  --producto-soft: oklch(0.93 0.02 235);
+  /* Tipografía y Contrastes */
+  --ink: #1F2421;
+  --ink-soft: #5C6460;
+  --ink-faint: #8A948F;
 
-  --danger: oklch(0.58 0.18 27);
-  --danger-soft: oklch(0.95 0.05 30);
-  --success: oklch(0.62 0.14 155);
-  --success-soft: oklch(0.94 0.04 155);
+  /* Acentos de Marca Multi-Tenant */
+  --brand-accent: #1B4332;
+  --brand-accent-contrast: #FFFFFF;
+  --brand-accent-surface: #EBF5EE;
 
-  --radius-lg: 20px;
+  --brand-accent-retail: #9F1239;
+  --brand-accent-retail-contrast: #FFFFFF;
+  --brand-accent-retail-surface: #FDF2F4;
+
+  --brand-accent-admin: #0F172A;
+  --brand-accent-admin-surface: #F1F5F9;
+
+  /* Categorías de Acción (Servicio vs Producto) */
+  --servicio: #D97706;
+  --servicio-ink: #78350F;
+  --servicio-surface: #FEF3C7;
+  --producto: #1B4332;
+  --producto-ink: #FFFFFF;
+  --producto-soft: #EBF5EE;
+
+  /* Estados Funcionales */
+  --danger: #DC2626;
+  --danger-soft: #FEE2E2;
+  --success: #15803D;
+  --success-soft: #DCFCE7;
+  --warning: #D97706;
+  --warning-soft: #FEF3C7;
+
+  /* Radios Táctiles */
+  --radius-lg: 18px;
   --radius-md: 14px;
   --radius-sm: 10px;
-  --shadow-card:
-    0 1px 2px oklch(0.22 0.02 260 / 0.06),
-    0 10px 28px oklch(0.22 0.02 260 / 0.08);
+  --radius-pill: 9999px;
 
-  --font-display: "Sora", system-ui, sans-serif;
-  --font-body: "Work Sans", system-ui, sans-serif;
+  /* Sombras Cálidas y Suaves */
+  --shadow-subtle: 0 1px 3px rgba(31, 36, 33, 0.04), 0 4px 12px rgba(31, 36, 33, 0.03);
+  --shadow-card: 0 2px 6px rgba(31, 36, 33, 0.04), 0 10px 28px rgba(31, 36, 33, 0.06);
+  --shadow-elevated: 0 8px 24px rgba(31, 36, 33, 0.10), 0 20px 40px rgba(31, 36, 33, 0.08);
 
-  /* por debajo de esto se ve la barra de navegación inferior; por
-     encima, la barra lateral. Ver AppShell. */
+  /* Medidas de Accesibilidad Táctil */
+  --touch-target-min: 48px;
+  --touch-button-h: 52px;
+
+  /* Tipografías */
+  --font-display: "Sora", system-ui, -apple-system, sans-serif;
+  --font-body: "Work Sans", system-ui, -apple-system, sans-serif;
+
+  /* Breakpoint de escritorio (coincide con AppShell y media queries) */
   --breakpoint-desktop: 960px;
+}
+
+/* Modificadores dinámicos por rubro de negocio */
+[data-rubro="lenceria"] {
+  --brand-accent: var(--brand-accent-retail);
+  --brand-accent-contrast: var(--brand-accent-retail-contrast);
+  --brand-accent-surface: var(--brand-accent-retail-surface);
+}
+
+[data-rubro="admin"] {
+  --brand-accent: var(--brand-accent-admin);
+  --brand-accent-contrast: #FFFFFF;
+  --brand-accent-surface: var(--brand-accent-admin-surface);
 }

@@ -1076,9 +1076,26 @@ export default function MovimientoFlow() {
             {error && <p className={styles.error}>{error}</p>}
 
             {!pidiendoConfirmacion && (
-              <Button fullWidth onClick={() => enviar(false)} disabled={enviando || usuarioId === null}>
-                {enviando ? "Registrando…" : `Confirmar ${accion.categoria === "producto" ? "venta" : "servicio"}`}
-              </Button>
+              <>
+                <div className={styles.mobileStickyBar}>
+                  <div>
+                    <div className={styles.stickyTotalLabel}>Total a cobrar</div>
+                    <div className={styles.stickyTotalAmount}>
+                      {formatMoney(parseMoneyInput(precioFinal))}
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => enviar(false)}
+                    disabled={enviando || usuarioId === null}
+                  >
+                    {enviando ? "Registrando…" : "Confirmar ✓"}
+                  </Button>
+                </div>
+
+                <Button fullWidth onClick={() => enviar(false)} disabled={enviando || usuarioId === null}>
+                  {enviando ? "Registrando…" : `Confirmar ${accion.categoria === "producto" ? "venta" : "servicio"}`}
+                </Button>
+              </>
             )}
             <Button variant="ghost" onClick={() => navigate(`/${tipo}`)}>
               Cancelar

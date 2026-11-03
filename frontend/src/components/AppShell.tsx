@@ -21,6 +21,7 @@ export interface AppShellProps {
   navItems: NavItem[];
   activeId: string;
   negocioId?: number;
+  tipoRubro?: string;
   onAbrirTutorial?: () => void;
   children: ReactNode;
 }
@@ -105,6 +106,7 @@ export function AppShell({
   navItems,
   activeId,
   negocioId,
+  tipoRubro,
   onAbrirTutorial,
   children,
 }: AppShellProps) {
@@ -114,7 +116,7 @@ export function AppShell({
   );
 
   return (
-    <div className={styles.shell}>
+    <div className={styles.shell} data-rubro={tipoRubro}>
       <aside className={styles.sidebar}>
         <div className={styles.sidebarBrand}>
           <div className={styles.sidebarLogo}>{logo}</div>
@@ -133,6 +135,11 @@ export function AppShell({
               {item.badge && <span className={styles.dot} />}
             </Link>
           ))}
+          {session?.rol === "admin" && (
+            <Link to="/negocios" className={styles.adminNavBtn}>
+              <span>⚙️ Panel SuperAdmin</span>
+            </Link>
+          )}
         </nav>
 
         <div className={styles.sidebarSpacer} />
@@ -175,6 +182,11 @@ export function AppShell({
             </div>
           </div>
           <div className={styles.mobileHeaderRight}>
+            {session?.rol === "admin" && (
+              <Link to="/negocios" className={styles.adminHeaderBadge} title="Ir a Panel Admin">
+                Admin
+              </Link>
+            )}
             <SyncBadge
               isOnline={isOnline}
               isSyncing={isSyncing}
@@ -208,6 +220,11 @@ export function AppShell({
         <header className={styles.desktopTopbar}>
           <h1 className={styles.desktopTitle}>{saludo}</h1>
           <div className={styles.desktopActions}>
+            {session?.rol === "admin" && (
+              <Link to="/negocios" className={styles.adminHeaderBtn} title="Ir a Panel Admin">
+                ⚙️ Panel SuperAdmin
+              </Link>
+            )}
             <SyncBadge
               isOnline={isOnline}
               isSyncing={isSyncing}
