@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # repo, así que no es opcional en el deploy real (ver docs/DEPLOY.md).
     jwt_secret_key: str = "dev-secret-no-usar-en-produccion"
     jwt_algorithm: str = "HS256"
-    jwt_expira_minutos: int = 60 * 24 * 7  # 7 días, sin refresh token por ahora
+    jwt_expira_minutos: int = 60 * 24 * 90  # 90 días para evitar desconexiones indeseadas en el punto de venta diario
 
     @property
     def cors_origins_list(self) -> list[str]:

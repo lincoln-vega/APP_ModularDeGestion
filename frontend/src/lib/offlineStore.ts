@@ -1,7 +1,7 @@
-import type { Negocio, Producto } from "../api/client";
+import type { CierreCaja, Movimiento, Negocio, Producto } from "../api/client";
 
 export const DB_NAME = "gestion_offline_db";
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 export interface ColaSyncItemLocal {
   id: string; // UUID v4 único e idempotente
@@ -58,6 +58,20 @@ export function getDB(): Promise<IDBDatabase> {
         syncStore.createIndex("negocio_id", "negocio_id", { unique: false });
         syncStore.createIndex("estado", "estado", { unique: false });
         syncStore.createIndex("fecha_creacion", "fecha_creacion", { unique: false });
+      }
+
+      // 4. Store 'movimientos' (caché persistente local de ventas y servicios)
+      if (!db.objectStoreNames.contains("movimientos")) {
+        const movStore = db.createObjectStore("movimientos", { keyPath: "id" });
+        movStore.createIndex("negocio_id", "negocio_id", { unique: false });
+        movStore.createIndex("fecha", "fecha", { unique: false });
+      }
+
+      // 5. Store 'cierres_caja' (caché persistente de cierres de caja)
+      if (!db.objectStoreNames.contains("cierres_caja")) {
+        const cierresStore = db.createObjectStore("cierres_caja", { keyPath: "id" });
+        cierresStore.createIndex("negocio_id", "negocio_id", { unique: false });
+        cierresStore.createIndex("fecha_inicio", "fecha_inicio", { unique: false });
       }
     };
 
@@ -222,6 +236,88 @@ export async function listNegociosCache(): Promise<Negocio[]> {
     const tx = db.transaction("negocios", "readonly");
     const store = tx.objectStore("negocios");
     const request = store.getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// --- MOVIMIENTOS CACHE (HISTORIAL DE VENTAS Y SERVICIOS) ---
+
+export async function saveMovimientosCache(negocioId: number, movimientos: Movimiento[]): Promise<void> {
+  const db = await getDB();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("movimientos", "readwrite");
+    const store = tx.objectStore("movimientos");
+    for (const m of movimientos) {
+      store.put({ ...m, negocio_id: negocioId });
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function saveMovimientoCache(mov: Movimiento): Promise<void> {
+  const db = await getDB();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("movimientos", "readwrite");
+    const store = tx.objectStore("movimientos");
+    store.put(mov);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function getMovimientosCache(negocioId: number): Promise<Movimiento[]> {
+  const db = await getDB();
+  return new Promise<Movimiento[]>((resolve, reject) => {
+    const tx = db.transaction("movimientos", "readonly");
+    const store = tx.objectStore("movimientos");
+    const index = store.index("negocio_id");
+    const request = index.getAll(IDBKeyRange.only(negocioId));
+
+    request.onsuccess = () => {
+      const results: Movimiento[] = request.result || [];
+      results.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+      resolve(results);
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function deleteMovimientoCache(id: number): Promise<void> {
+  const db = await getDB();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("movimientos", "readwrite");
+    const store = tx.objectStore("movimientos");
+    store.delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// --- CIERRES DE CAJA CACHE ---
+
+export async function saveCierresCajaCache(negocioId: number, cierres: CierreCaja[]): Promise<void> {
+  const db = await getDB();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("cierres_caja", "readwrite");
+    const store = tx.objectStore("cierres_caja");
+    for (const c of cierres) {
+      store.put({ ...c, negocio_id: negocioId });
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function getCierresCajaCache(negocioId: number): Promise<CierreCaja[]> {
+  const db = await getDB();
+  return new Promise<CierreCaja[]>((resolve, reject) => {
+    const tx = db.transaction("cierres_caja", "readonly");
+    const store = tx.objectStore("cierres_caja");
+    const index = store.index("negocio_id");
+    const request = index.getAll(IDBKeyRange.only(negocioId));
+
     request.onsuccess = () => resolve(request.result || []);
     request.onerror = () => reject(request.error);
   });

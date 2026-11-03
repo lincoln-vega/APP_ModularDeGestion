@@ -194,7 +194,11 @@ export default function MovimientoFlow() {
     texto += `🏢 *${negocio.nombre}*\n`;
     texto += `📅 Fecha: ${fechaHora}\n`;
     if (movimientoCreado?.id) {
-      texto += `🔖 Ticket N°: #${String(movimientoCreado.id).padStart(5, "0")}\n`;
+      const ticketNum =
+        movimientoCreado.id > 0
+          ? `#${String(movimientoCreado.id).padStart(5, "0")}`
+          : `#L-${Math.abs(movimientoCreado.id).toString().slice(-4)} (Local)`;
+      texto += `🔖 Ticket N°: ${ticketNum}\n`;
     }
     texto += `----------------------------------------\n`;
     texto += `✅ *${cantidad > 1 ? `${cantidad}x ` : ""}${productoElegido.nombre}*\n`;
@@ -244,7 +248,10 @@ export default function MovimientoFlow() {
             <span className={styles.ticketSubtitle}>Comprobante de Atención</span>
             {movimientoCreado?.id && (
               <span className={styles.ticketNumber}>
-                Ticket #{String(movimientoCreado.id).padStart(5, "0")}
+                Ticket{" "}
+                {movimientoCreado.id > 0
+                  ? `#${String(movimientoCreado.id).padStart(5, "0")}`
+                  : `#L-${Math.abs(movimientoCreado.id).toString().slice(-4)} (Local)`}
               </span>
             )}
             <span className={styles.ticketDate}>{fechaHora}</span>

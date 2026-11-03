@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.auth import UsuarioAutenticado, get_usuario_actual
 from app.core.security import crear_access_token, verificar_password
 from app.db.session import get_db
 from app.models.usuario import Usuario as UsuarioModel
@@ -42,4 +43,26 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         rol=usuario.rol,
         negocio_id=usuario.negocio_id,
         nombre=usuario.nombre,
+        usuario_id=usuario.id,
+    )
+
+
+@router.post("/refresh", response_model=LoginResponse)
+def refresh_token(
+    usuario: UsuarioAutenticado = Depends(get_usuario_actual),
+    db: Session = Depends(get_db),
+):
+    """Renueva el token de sesión de forma transparente mientras siga siendo válido,
+    evitando que la sesión se cierre por inactividad o desconexión temporal."""
+    usuario_db = db.get(UsuarioModel, usuario.usuario_id)
+    if usuario_db is None or not usuario_db.activo:
+        raise HTTPException(status_code=401, detail="Usuario deshabilitado")
+
+    nuevo_token = crear_access_token(usuario_db.id, usuario_db.rol, usuario_db.negocio_id)
+    return LoginResponse(
+        access_token=nuevo_token,
+        rol=usuario_db.rol,
+        negocio_id=usuario_db.negocio_id,
+        nombre=usuario_db.nombre,
+        usuario_id=usuario_db.id,
     )

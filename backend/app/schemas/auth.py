@@ -13,3 +13,4 @@ class LoginResponse(BaseModel):
     # None para admin: no está atado a un negocio puntual.
     negocio_id: int | None
     nombre: str
+    usuario_id: int

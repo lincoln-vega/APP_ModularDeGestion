@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNegocioDelTipo } from "../hooks/useNegocioDelTipo";
 import { useProductos } from "../api/useProductos";
 import { api, type CierreCaja as CierreCajaType, type Movimiento } from "../api/client";
+import { syncManager } from "../lib/syncManager";
 import { formatMoney, todayKey } from "../lib/format";
 import { esCapital } from "../lib/contabilidad";
 import { Button } from "../components/Button";
@@ -27,14 +28,33 @@ export default function CierreCaja() {
     if (!negocio) return;
     let cancelado = false;
     setCargandoDatos(true);
-    Promise.all([api.listMovimientos(negocio.id), api.listCierresCaja(negocio.id)])
-      .then(([movs, cierres]) => {
+
+    // Intentar sincronizar cola pendiente si hay conexión al abrir Cierre de Caja
+    syncManager.syncAll().catch(() => {});
+
+    Promise.allSettled([api.listMovimientos(negocio.id), api.listCierresCaja(negocio.id)])
+      .then(([resMovs, resCierres]) => {
         if (cancelado) return;
-        setMovimientos(movs);
-        setCierreDeHoy(cierres.find((c) => c.fecha_inicio === todayKey() && c.fecha_fin === todayKey()) ?? null);
+        if (resMovs.status === "fulfilled") {
+          setMovimientos(resMovs.value);
+        } else {
+          setError(
+            resMovs.reason instanceof Error
+              ? resMovs.reason.message
+              : "Error al cargar movimientos",
+          );
+        }
+
+        if (resCierres.status === "fulfilled") {
+          setCierreDeHoy(
+            resCierres.value.find(
+              (c) => c.fecha_inicio === todayKey() && c.fecha_fin === todayKey(),
+            ) ?? null,
+          );
+        }
       })
-      .catch((err) => !cancelado && setError(err instanceof Error ? err.message : "Error inesperado"))
       .finally(() => !cancelado && setCargandoDatos(false));
+
     return () => {
       cancelado = true;
     };
@@ -247,6 +267,14 @@ function CierreCajaContenido({
                       <span className={styles.cantBadge}>{m.cantidad}x</span>
                     )}
                     <span>{m.descripcion ?? productosPorId.get(m.producto_id)?.nombre ?? "—"}</span>
+                    {m._sync_pendiente && (
+                      <span
+                        className={styles.badgeSyncPendiente}
+                        title="Guardado localmente en este dispositivo. Se sincronizará con el servidor al conectar."
+                      >
+                        🔄 Pendiente
+                      </span>
+                    )}
                   </td>
                   <td className={styles.muted}>{m.metodo_pago === "digital" ? "Digital" : "Efectivo"}</td>
                   <td className={styles.right}>{formatMoney(m.precio_final)}</td>

@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, onUnauthorized, setToken } from "../api/client";
+import { api, getToken, onUnauthorized, setToken } from "../api/client";
 
 const SESSION_KEY = "gestion:session";
 
@@ -15,6 +15,7 @@ export interface Session {
   rol: string;
   negocioId: number | null;
   nombre: string;
+  usuarioId: number | null;
 }
 
 interface AuthContextValue {
@@ -26,10 +27,28 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function extraerUsuarioIdDeToken(token: string | null): number | null {
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1]));
+    const id = Number(payload.sub);
+    return isNaN(id) ? null : id;
+  } catch {
+    return null;
+  }
+}
+
 function leerSesionGuardada(): Session | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as Session) : null;
+    if (!raw) return null;
+    const session = JSON.parse(raw) as Session;
+    if (session && session.usuarioId == null) {
+      session.usuarioId = extraerUsuarioIdDeToken(getToken());
+    }
+    return session;
   } catch {
     return null;
   }
@@ -47,7 +66,7 @@ function guardarSesion(session: Session | null): void {
 /**
  * Sesión de la app. El token en sí vive en client.ts (getToken/setToken,
  * junto al fetch que lo usa); acá se guarda además `{rol, negocioId,
- * nombre}` — lo que devuelve el login — para no tener que decodificar el
+ * nombre, usuarioId}` — lo que devuelve el login — para no tener que decodificar el
  * JWT en el cliente solo para saber quién es el usuario.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -62,10 +81,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, [navigate]);
 
+  // Keep-alive silencioso: renueva el token al reabrir la app o periódicamente para evitar desconexiones
+  useEffect(() => {
+    if (!session) return;
+
+    let cancelado = false;
+    const intentarRenovarToken = async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      try {
+        const renovado = await api.refreshToken();
+        if (cancelado) return;
+        setToken(renovado.access_token);
+        const sesionActualizada: Session = {
+          rol: renovado.rol,
+          negocioId: renovado.negocio_id,
+          nombre: renovado.nombre,
+          usuarioId: renovado.usuario_id ?? session.usuarioId,
+        };
+        guardarSesion(sesionActualizada);
+        setSession(sesionActualizada);
+      } catch {
+        // En caso de fallo transitorio o Railway iniciando, no interrumpimos la sesión activa
+      }
+    };
+
+    const onResume = () => {
+      if (document.visibilityState === "visible") {
+        intentarRenovarToken();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onResume);
+    window.addEventListener("focus", onResume);
+
+    // Renovar cada 12 horas si la app se mantiene abierta
+    const interval = setInterval(intentarRenovarToken, 12 * 60 * 60 * 1000);
+
+    return () => {
+      cancelado = true;
+      document.removeEventListener("visibilitychange", onResume);
+      window.removeEventListener("focus", onResume);
+      clearInterval(interval);
+    };
+  }, [session]);
+
   const login = useCallback(async (username: string, password: string): Promise<Session> => {
     const res = await api.login(username, password);
     setToken(res.access_token);
-    const nuevaSesion: Session = { rol: res.rol, negocioId: res.negocio_id, nombre: res.nombre };
+    const nuevaSesion: Session = {
+      rol: res.rol,
+      negocioId: res.negocio_id,
+      nombre: res.nombre,
+      usuarioId: res.usuario_id ?? extraerUsuarioIdDeToken(res.access_token),
+    };
     guardarSesion(nuevaSesion);
     setSession(nuevaSesion);
     return nuevaSesion;

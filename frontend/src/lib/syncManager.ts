@@ -28,6 +28,29 @@ class SyncManager {
     if (typeof window !== "undefined") {
       window.addEventListener("online", () => this.handleOnline());
       window.addEventListener("offline", () => this.handleOffline());
+
+      // Sincronizar y actualizar conteos inmediatamente cuando el usuario reabre la app o desbloquea su móvil
+      if (typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") {
+            this.refreshAllCounts();
+            this.syncAll().catch(() => {});
+          }
+        });
+      }
+
+      window.addEventListener("focus", () => {
+        this.refreshAllCounts();
+        this.syncAll().catch(() => {});
+      });
+
+      // Chequeo periódico en segundo plano cada 25 segundos para evitar items acumulados
+      setInterval(() => {
+        if (this.isOnline && !this.isSyncing) {
+          this.syncAll().catch(() => {});
+        }
+      }, 25000);
+
       // Inicializar conteo
       this.refreshAllCounts();
     }
@@ -186,11 +209,14 @@ class SyncManager {
         await eliminarSyncItems(idsAEliminar);
       }
 
-      // Recarga fresca del catálogo desde el servidor para reflejar stock consolidado
+      // Recarga fresca del catálogo y de los movimientos desde el servidor para reflejar stock consolidado y persistencia
       try {
-        await api.listProductos(negocioId);
+        await Promise.allSettled([
+          api.listProductos(negocioId),
+          api.listMovimientos(negocioId),
+        ]);
       } catch (err) {
-        console.warn("No se pudo recargar el catálogo tras sync:", err);
+        console.warn("No se pudo recargar el catálogo o movimientos tras sync:", err);
       }
 
       this.lastSyncTime = new Date();

@@ -6,10 +6,20 @@
 
 import {
   actualizarStockOptimista,
+  deleteMovimientoCache,
   deleteProductoCache,
+  eliminarSyncItem,
   encolarSyncItem,
   generateUUID,
+  getCierresCajaCache,
+  getColaSync,
+  getMovimientosCache,
+  getNegocioCache,
   getProductosCache,
+  saveCierresCajaCache,
+  saveMovimientoCache,
+  saveMovimientosCache,
+  saveNegocioCache,
   saveProductoCache,
   saveProductosCache,
 } from "../lib/offlineStore";
@@ -75,10 +85,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !path.startsWith("/auth/login")) {
     // Token ausente, vencido o inválido — se limpia y se avisa; el
     // AuthProvider decide qué hacer (redirigir a /login), acá no se sabe
-    // de rutas.
+    // de rutas. No se ejecuta en /auth/login para no desloguear llamadas legítimas.
     setToken(null);
     unauthorizedListeners.forEach((listener) => listener());
   }
@@ -259,6 +269,7 @@ export interface Movimiento {
   monto_capital: number;
   metodo_pago: string | null;
   fecha: string;
+  _sync_pendiente?: boolean;
 }
 
 export type MovimientoCreate = Omit<Movimiento, "id" | "negocio_id" | "monto_capital" | "cantidad"> & {
@@ -314,6 +325,7 @@ export interface LoginResponse {
   rol: string;
   negocio_id: number | null;
   nombre: string;
+  usuario_id: number;
 }
 
 export interface ColaSyncItem {
@@ -375,8 +387,7 @@ async function procesarMovimientoOffline(
   // 3. Notificar al syncManager para actualizar badges y estado
   syncManager.notifyItemQueued(negocioId);
 
-  // 4. Retornar el movimiento generado para continuar el flujo del usuario
-  return {
+  const movGenerado: Movimiento = {
     id: -Date.now(),
     negocio_id: negocioId,
     usuario_id: payload.usuario_id,
@@ -385,12 +396,23 @@ async function procesarMovimientoOffline(
     tipo: payload.tipo,
     cantidad: cant,
     descripcion: payload.descripcion ?? null,
-    precio_lista: payload.precio_lista,
-    precio_final: payload.precio_final,
+    precio_lista: payload.precio_lista ?? "0.00",
+    precio_final: payload.precio_final ?? "0.00",
     monto_capital: Number(payload.monto_capital ?? 0),
     metodo_pago: payload.metodo_pago ?? null,
     fecha: fecha,
+    _sync_pendiente: true,
   };
+
+  // 4. Guardar de inmediato en la caché de movimientos para que aparezca al instante en Cierre de Caja
+  try {
+    await saveMovimientoCache(movGenerado);
+  } catch (e) {
+    console.warn("No se pudo cachear movimiento generado offline:", e);
+  }
+
+  // 5. Retornar el movimiento generado para continuar el flujo del usuario
+  return movGenerado;
 }
 
 export const api = {
@@ -398,7 +420,26 @@ export const api = {
     request<LoginResponse>("/auth/login", json({ username, password })),
 
   listNegocios: () => request<Negocio[]>("/negocios"),
-  getNegocio: (id: number) => request<Negocio>(`/negocios/${id}`),
+  getNegocio: async (id: number): Promise<Negocio> => {
+    const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (!isOffline) {
+      try {
+        const n = await request<Negocio>(`/negocios/${id}`);
+        saveNegocioCache(n).catch(() => {});
+        return n;
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status >= 500 || err.status === 0) {
+          const cached = await getNegocioCache(id);
+          if (cached) return cached;
+        }
+        throw err;
+      }
+    }
+    const cached = await getNegocioCache(id);
+    if (cached) return cached;
+    return await request<Negocio>(`/negocios/${id}`);
+  },
+  refreshToken: () => request<LoginResponse>("/auth/refresh", { method: "POST" }),
   createNegocio: (payload: NegocioCreate) =>
     request<Negocio>("/negocios", json(payload)),
   updateNegocio: (id: number, payload: NegocioUpdate) =>
@@ -504,14 +545,105 @@ export const api = {
     return request<ClienteVehiculo[]>(`/negocios/${negocioId}/clientes-vehiculos${qs}`);
   },
 
-  listMovimientos: (negocioId: number) =>
-    request<Movimiento[]>(`/negocios/${negocioId}/movimientos`),
+  listMovimientos: async (negocioId: number): Promise<Movimiento[]> => {
+    let baseMovimientos: Movimiento[] = [];
+    const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
 
-  deleteMovimiento: (negocioId: number, movimientoId: number) =>
-    request<{ ok: boolean; mensaje: string }>(
+    if (!isOffline) {
+      try {
+        baseMovimientos = await request<Movimiento[]>(`/negocios/${negocioId}/movimientos`);
+        saveMovimientosCache(negocioId, baseMovimientos).catch((err) => {
+          console.warn("Error guardando movimientos en cache:", err);
+        });
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status >= 500 || err.status === 0) {
+          baseMovimientos = await getMovimientosCache(negocioId);
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      baseMovimientos = await getMovimientosCache(negocioId);
+    }
+
+    // Unir con ventas pendientes en cola_sync para que nunca desaparezcan de la vista
+    try {
+      const colaItems = await getColaSync(negocioId);
+      const itemsMovimiento = colaItems.filter(
+        (i) => i.entidad === "movimiento" && i.estado !== "error",
+      );
+
+      if (itemsMovimiento.length > 0) {
+        const idSet = new Set(baseMovimientos.map((m) => m.id));
+        for (const item of itemsMovimiento) {
+          const p = item.payload as Record<string, unknown>;
+          let id = typeof p.id === "number" ? p.id : -1;
+          if (id === -1) {
+            let hash = 0;
+            for (let i = 0; i < item.id.length; i++) {
+              hash = (hash << 5) - hash + item.id.charCodeAt(i);
+              hash |= 0;
+            }
+            id = -Math.abs(hash || Date.now());
+          }
+
+          if (!idSet.has(id)) {
+            baseMovimientos.push({
+              id,
+              negocio_id: negocioId,
+              usuario_id: Number(p.usuario_id || 1),
+              producto_id: Number(p.producto_id),
+              cliente_vehiculo_id: (p.cliente_vehiculo_id as number | null) ?? null,
+              tipo: String(p.tipo || "venta"),
+              cantidad: Number(p.cantidad || 1),
+              descripcion: (p.descripcion as string | null) ?? null,
+              precio_lista: String(p.precio_lista ?? "0.00"),
+              precio_final: String(p.precio_final ?? "0.00"),
+              monto_capital: Number(p.monto_capital ?? 0),
+              metodo_pago: (p.metodo_pago as string | null) ?? null,
+              fecha: String(p.fecha || item.fecha_creacion),
+              _sync_pendiente: true,
+            });
+            idSet.add(id);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Error combinando cola_sync con movimientos:", e);
+    }
+
+    return baseMovimientos.sort(
+      (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime(),
+    );
+  },
+
+  deleteMovimiento: async (negocioId: number, movimientoId: number) => {
+    if (movimientoId < 0) {
+      // Movimiento offline local — eliminar de cola_sync y de la caché
+      try {
+        const cola = await getColaSync(negocioId);
+        const item = cola.find((i) => {
+          const p = i.payload as Record<string, unknown>;
+          return p.id === movimientoId;
+        }) || cola[0];
+        if (item) {
+          await eliminarSyncItem(item.id);
+        }
+        await deleteMovimientoCache(movimientoId);
+        syncManager.notifyItemQueued(negocioId);
+        return { ok: true, mensaje: "Movimiento local anulado." };
+      } catch (err) {
+        console.warn("Error al anular movimiento offline:", err);
+      }
+    }
+
+    const res = await request<{ ok: boolean; mensaje: string }>(
       `/negocios/${negocioId}/movimientos/${movimientoId}`,
       { method: "DELETE" },
-    ),
+    );
+    deleteMovimientoCache(movimientoId).catch(() => {});
+    return res;
+  },
 
   async createMovimiento(
     negocioId: number,
@@ -540,8 +672,22 @@ export const api = {
     }
   },
 
-  listCierresCaja: (negocioId: number) =>
-    request<CierreCaja[]>(`/negocios/${negocioId}/cierres-caja`),
+  listCierresCaja: async (negocioId: number): Promise<CierreCaja[]> => {
+    const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (!isOffline) {
+      try {
+        const cierres = await request<CierreCaja[]>(`/negocios/${negocioId}/cierres-caja`);
+        saveCierresCajaCache(negocioId, cierres).catch(() => {});
+        return cierres;
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status >= 500 || err.status === 0) {
+          return await getCierresCajaCache(negocioId);
+        }
+        throw err;
+      }
+    }
+    return await getCierresCajaCache(negocioId);
+  },
   createCierreCaja: (negocioId: number, payload: CierreCajaCreate) =>
     request<CierreCaja>(`/negocios/${negocioId}/cierres-caja`, json(payload)),
 
