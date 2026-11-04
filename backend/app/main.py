@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 # Importa app.db.base para registrar TODOS los modelos en el registry de
@@ -22,6 +22,21 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="APP_ModularDeGestion API", version="0.1.3", lifespan=lifespan)
+
+# Middleware de corrección de rutas para Vercel Serverless:
+# Cuando Vercel reescribe /(.*) a /api/index.py, la cabecera x-matched-path
+# contiene la URL original solicitada por el cliente (/api/v1/..., /docs, /).
+# Restauramos el path original en el scope ASGI para que FastAPI despache la ruta exacta.
+@app.middleware("http")
+async def vercel_routing_middleware(request: Request, call_next):
+    matched_path = request.headers.get("x-matched-path")
+    scope_path = request.scope.get("path", "")
+    if matched_path and scope_path in ("/api/index.py", "/api", "/api/index", "/api/index.py/"):
+        request.scope["path"] = matched_path.split("?")[0]
+    elif scope_path in ("/api/index.py", "/api/index"):
+        request.scope["path"] = "/"
+    return await call_next(request)
+
 
 # CORS universal para soportar Cloudflare Pages (*.pages.dev), Vercel (*.vercel.app),
 # dominios personalizados y red local en dispositivos móviles sin bloqueos de navegador.

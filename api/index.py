@@ -12,3 +12,6 @@ if str(BACKEND_DIR) not in sys.path:
 os.environ.setdefault("PYTHONPATH", str(BACKEND_DIR))
 
 from app.main import app
+
+handler = app
+
