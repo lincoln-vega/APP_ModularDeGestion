@@ -27,8 +27,13 @@ class Settings(BaseSettings):
 
     @property
     def clean_database_url(self) -> str:
+        import os
+        raw = self.database_url
+        # Fallback transparente si Vercel Storage inyectó POSTGRES_URL
+        if (raw == "postgresql+psycopg2://postgres:postgres@localhost:5432/app_modulardegestion" or not raw) and "POSTGRES_URL" in os.environ:
+            raw = os.environ["POSTGRES_URL"]
         # Eliminar cualquier salto de línea (\n, \r) o espacio accidental al pegar en variables de entorno
-        url = "".join(self.database_url.split())
+        url = "".join(raw.split())
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg2://", 1)
         elif url.startswith("postgresql://") and not url.startswith("postgresql+"):
