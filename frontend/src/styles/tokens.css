@@ -15,14 +15,18 @@
 :root {
   /* Lienzo y Superficies */
   --paper: #FAF9F5;
+  --surface: #F5F4F0;
+  --sand: #F4F1EA;
   --card: #FFFFFF;
   --line: #E7E5E0;
   --line-strong: #D1CEC7;
+  --border: #E7E5E0;
 
   /* Tipografía y Contrastes */
   --ink: #1F2421;
   --ink-soft: #5C6460;
   --ink-faint: #8A948F;
+  --muted: #5C6460;
 
   /* Acentos de Marca Multi-Tenant */
   --brand-accent: #1B4332;
