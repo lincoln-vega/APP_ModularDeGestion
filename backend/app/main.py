@@ -21,9 +21,9 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="APP_ModularDeGestion API", version="0.1.1", lifespan=lifespan)
+app = FastAPI(title="APP_ModularDeGestion API", version="0.1.3", lifespan=lifespan)
 
-# CORS universal para soportar Cloudflare Pages (*.pages.dev), Railway (*.railway.app),
+# CORS universal para soportar Cloudflare Pages (*.pages.dev), Vercel (*.vercel.app),
 # dominios personalizados y red local en dispositivos móviles sin bloqueos de navegador.
 app.add_middleware(
     CORSMiddleware,
@@ -33,5 +33,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/", tags=["health"])
+@app.get("/health", tags=["health"])
+def root_health():
+    """Endpoint raíz y de verificación de salud para Vercel y monitores."""
+    return {
+        "status": "ok",
+        "service": "APP_ModularDeGestion API",
+        "version": "0.1.3",
+        "docs": "/docs",
+    }
+
 
 app.include_router(api_router)

@@ -1,18 +1,50 @@
 import os
+from pathlib import Path
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models.negocio import Negocio
 from app.models.usuario import Usuario
 from app.core.security import hash_password, verificar_password
+from app.core.config import settings
+
+
+def ejecutar_migraciones_si_es_necesario() -> None:
+    """Aplica migraciones de Alembic de forma automática e idempotente."""
+    try:
+        from alembic.config import Config
+        from alembic import command
+
+        possible_ini_paths = [
+            Path(__file__).resolve().parent.parent.parent / "alembic.ini",
+            Path.cwd() / "alembic.ini",
+            Path.cwd() / "backend" / "alembic.ini",
+        ]
+        ini_path = None
+        for p in possible_ini_paths:
+            if p.exists():
+                ini_path = p
+                break
+
+        if ini_path:
+            cfg = Config(str(ini_path))
+            alembic_dir = ini_path.parent / "alembic"
+            cfg.set_main_option("script_location", str(alembic_dir))
+            cfg.set_main_option("sqlalchemy.url", settings.clean_database_url)
+            command.upgrade(cfg, "head")
+            print("[Alembic] Migraciones sincronizadas a head.")
+    except Exception as exc:
+        print(f"[Alembic Notice] Migraciones automáticas omitidas o ya actualizadas: {exc}")
 
 
 def asegurar_datos_iniciales() -> None:
     """Verifica y asegura que los negocios y usuarios iniciales existan con sus credenciales operativas.
 
     Se ejecuta de forma idempotente en el arranque del servidor para que el sistema
-    funcione de inmediato en cualquier despliegue (Railway, Render, Local) sin requerir
+    funcione de inmediato en cualquier despliegue (Vercel, Railway, Render, Local) sin requerir
     ejecución manual de scripts de seed.
     """
+    ejecutar_migraciones_si_es_necesario()
+
     db: Session = SessionLocal()
     try:
         # 1. Asegurar negocio Llantería (papá)
