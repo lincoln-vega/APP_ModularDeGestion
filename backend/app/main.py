@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,15 +11,25 @@ from app.db import base as _base  # noqa: F401
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.init_db import asegurar_datos_iniciales
 
-app = FastAPI(title="APP_ModularDeGestion API", version="0.1.0")
 
-is_wildcard = "*" in settings.cors_origins_list
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Asegura cuentas operativas y negocios base de inmediato al arrancar el contenedor
+    asegurar_datos_iniciales()
+    yield
 
+
+app = FastAPI(title="APP_ModularDeGestion API", version="0.1.1", lifespan=lifespan)
+
+# CORS universal para soportar Cloudflare Pages (*.pages.dev), Railway (*.railway.app),
+# dominios personalizados y red local en dispositivos móviles sin bloqueos de navegador.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
-    allow_credentials=not is_wildcard,
+    allow_origin_regex=r"^https?://.*$",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

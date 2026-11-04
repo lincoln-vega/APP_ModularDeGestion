@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { Button } from "../components/Button";
 import { useAuth } from "../hooks/useAuth";
 import { resolverDestino } from "../hooks/useDestinoSesion";
-import { ApiError } from "../api/client";
+import { ApiError, BASE_URL } from "../api/client";
 import { GaugeIcon, WrenchIcon } from "../components/icons/Icons";
 import styles from "./Login.module.css";
 
@@ -34,7 +34,15 @@ export default function Login() {
         navigate(destino, { replace: true });
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Usuario o contraseña incorrectos.");
+      if (err instanceof ApiError) {
+        setError(err.message || "Usuario o contraseña incorrectos.");
+      } else if (err instanceof TypeError && err.message.toLowerCase().includes("fetch")) {
+        setError(
+          `No se pudo conectar con el servidor backend (${BASE_URL}). Verifica que el servicio en Railway esté activo y sin errores.`,
+        );
+      } else {
+        setError(err instanceof Error ? err.message : "Error al intentar iniciar sesión.");
+      }
     } finally {
       setEnviando(false);
     }

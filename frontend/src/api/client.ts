@@ -25,7 +25,19 @@ import {
 } from "../lib/offlineStore";
 import { syncManager } from "../lib/syncManager";
 
-const BASE_URL = import.meta.env.VITE_API_URL;
+function resolveBaseUrl(): string {
+  const envUrl = (import.meta.env.VITE_API_URL || "").trim();
+  if (!envUrl || envUrl === "undefined") {
+    return "/api/v1";
+  }
+  const clean = envUrl.replace(/\/+$/, "");
+  if (!clean.endsWith("/api/v1")) {
+    return `${clean}/api/v1`;
+  }
+  return clean;
+}
+
+export const BASE_URL = resolveBaseUrl();
 
 // --- sesión: token en localStorage + aviso global cuando el backend
 // rechaza por 401. Es un módulo plano (no un componente), así que no
