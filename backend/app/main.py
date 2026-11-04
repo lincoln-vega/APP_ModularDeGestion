@@ -52,13 +52,15 @@ app.add_middleware(
 
 @app.get("/", tags=["health"])
 @app.get("/health", tags=["health"])
-def root_health():
+def root_health(request: Request):
     """Endpoint raíz y de verificación de salud para Vercel y monitores."""
     return {
         "status": "ok",
         "service": "APP_ModularDeGestion API",
         "version": "0.1.3",
         "docs": "/docs",
+        "path": request.scope.get("path"),
+        "headers": dict(request.headers),
     }
 
 
