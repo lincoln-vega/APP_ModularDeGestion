@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from urllib.parse import parse_qs, urlencode
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -24,16 +25,20 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="APP_ModularDeGestion API", version="0.1.3", lifespan=lifespan)
 
 # Middleware de corrección de rutas para Vercel Serverless:
-# Cuando Vercel reescribe /(.*) a /api/index.py, la cabecera x-matched-path
-# contiene la URL original solicitada por el cliente (/api/v1/..., /docs, /).
-# Restauramos el path original en el scope ASGI para que FastAPI despache la ruta exacta.
+# Vercel reescribe /(.*) a /api/index.py?__path=/$1.
+# Este middleware extrae __path, restaura el path y raw_path original en el scope ASGI
+# y limpia la query string para que FastAPI y OpenAPI despachen con exactitud.
 @app.middleware("http")
 async def vercel_routing_middleware(request: Request, call_next):
-    matched_path = request.headers.get("x-matched-path")
-    scope_path = request.scope.get("path", "")
-    if matched_path and scope_path in ("/api/index.py", "/api", "/api/index", "/api/index.py/"):
-        request.scope["path"] = matched_path.split("?")[0]
-    elif scope_path in ("/api/index.py", "/api/index"):
+    query_raw = request.scope.get("query_string", b"").decode("latin-1")
+    if "__path=" in query_raw:
+        params = parse_qs(query_raw, keep_blank_values=True)
+        raw_target = params.pop("__path", ["/"])[0]
+        target_path = "/" + raw_target.lstrip("/")
+        request.scope["path"] = target_path
+        request.scope["raw_path"] = target_path.encode("utf-8")
+        request.scope["query_string"] = urlencode(params, doseq=True).encode("latin-1")
+    elif request.scope.get("path") in ("/api/index.py", "/api", "/api/index"):
         request.scope["path"] = "/"
     return await call_next(request)
 
@@ -52,15 +57,13 @@ app.add_middleware(
 
 @app.get("/", tags=["health"])
 @app.get("/health", tags=["health"])
-def root_health(request: Request):
+def root_health():
     """Endpoint raíz y de verificación de salud para Vercel y monitores."""
     return {
         "status": "ok",
         "service": "APP_ModularDeGestion API",
         "version": "0.1.3",
         "docs": "/docs",
-        "path": request.scope.get("path"),
-        "headers": dict(request.headers),
     }
 
 
